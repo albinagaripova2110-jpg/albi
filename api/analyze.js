@@ -1,69 +1,59 @@
-export const config = { runtime: 'edge' }
+export default async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 
-export default async function handler(req) {
-  if (req.method !== 'POST') {
-    return new Response('Method not allowed', { status: 405 })
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end()
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
   const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'OPENAI_API_KEY not configured' }), {
-      status: 500, headers: { 'Content-Type': 'application/json' }
-    })
-  }
+  if (!apiKey) return res.status(500).json({ error: 'OPENAI_API_KEY not configured' })
 
   try {
-    const body = await req.json()
+    const body = req.body
     const userContent = body.messages?.[0]?.content || []
     const imgPart = userContent.find(p => p.type === 'image')
     const textPart = userContent.find(p => p.type === 'text')
 
-    const openaiBody = {
-      model: 'gpt-4o-mini',
-      max_tokens: 1000,
-      messages: [{
-        role: 'user',
-        content: [
-          {
-            type: 'image_url',
-            image_url: {
-              url: `data:${imgPart.source.media_type};base64,${imgPart.source.data}`,
-              detail: 'low'
-            }
-          },
-          { type: 'text', text: textPart.text }
-        ]
-      }]
-    }
-
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
-      body: JSON.stringify(openaiBody),
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: [
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:${imgPart.source.media_type};base64,${imgPart.source.data}`,
+                detail: 'low'
+              }
+            },
+            { type: 'text', text: textPart.text }
+          ]
+        }]
+      })
     })
 
-    const data = await res.json()
+    const data = await openaiRes.json()
 
-    if (!res.ok) {
-      return new Response(JSON.stringify({ error: data.error?.message || 'OpenAI error' }), {
-        status: res.status, headers: { 'Content-Type': 'application/json' }
-      })
+    if (!openaiRes.ok) {
+      return res.status(openaiRes.status).json({ error: data.error?.message || 'OpenAI error' })
     }
 
-    // Convert OpenAI response → Anthropic-style (frontend stays the same)
     const text = data.choices?.[0]?.message?.content || ''
-    const converted = { content: [{ type: 'text', text }] }
+    return res.status(200).json({ content: [{ type: 'text', text }] })
 
-    return new Response(JSON.stringify(converted), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
-    })
   } catch (e) {
-    return new Response(JSON.stringify({ error: e.message }), {
-      status: 500, headers: { 'Content-Type': 'application/json' }
-    })
+    return res.status(500).json({ error: e.message })
   }
+}
+
+export const config = {
+  api: { bodyParser: { sizeLimit: '10mb' } }
 }
