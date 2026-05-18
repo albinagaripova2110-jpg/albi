@@ -5,69 +5,61 @@ export default async function handler(req) {
     return new Response('Method not allowed', { status: 405 })
   }
 
-  const apiKey = process.env.GEMINI_API_KEY
+  const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured' }), {
+    return new Response(JSON.stringify({ error: 'OPENAI_API_KEY not configured' }), {
       status: 500, headers: { 'Content-Type': 'application/json' }
     })
   }
 
   try {
     const body = await req.json()
-
-    // Extract image and prompt from Anthropic-style request
     const userContent = body.messages?.[0]?.content || []
     const imgPart = userContent.find(p => p.type === 'image')
     const textPart = userContent.find(p => p.type === 'text')
 
-    // Build Gemini request
-    const geminiBody = {
-      contents: [{
-        parts: [
+    const openaiBody = {
+      model: 'gpt-4o-mini',
+      max_tokens: 1000,
+      messages: [{
+        role: 'user',
+        content: [
           {
-            inline_data: {
-              mime_type: imgPart.source.media_type,
-              data: imgPart.source.data,
+            type: 'image_url',
+            image_url: {
+              url: `data:${imgPart.source.media_type};base64,${imgPart.source.data}`,
+              detail: 'low'
             }
           },
-          { text: textPart.text }
+          { type: 'text', text: textPart.text }
         ]
-      }],
-      generationConfig: {
-        temperature: 0.2,
-        maxOutputTokens: 1000,
-      }
+      }]
     }
 
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(geminiBody),
-      }
-    )
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(openaiBody),
+    })
 
     const data = await res.json()
 
     if (!res.ok) {
-      return new Response(JSON.stringify({ error: data.error?.message || 'Gemini error' }), {
+      return new Response(JSON.stringify({ error: data.error?.message || 'OpenAI error' }), {
         status: res.status, headers: { 'Content-Type': 'application/json' }
       })
     }
 
-    // Convert Gemini response → Anthropic-style response (so frontend stays the same)
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
-    const converted = {
-      content: [{ type: 'text', text }]
-    }
+    // Convert OpenAI response → Anthropic-style (frontend stays the same)
+    const text = data.choices?.[0]?.message?.content || ''
+    const converted = { content: [{ type: 'text', text }] }
 
     return new Response(JSON.stringify(converted), {
       status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      }
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
     })
   } catch (e) {
     return new Response(JSON.stringify({ error: e.message }), {
