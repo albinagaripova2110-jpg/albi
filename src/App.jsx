@@ -20,6 +20,8 @@ const T = {
 };
 
 const CSS = `
+html,body{overflow-x:hidden;width:100%;min-height:100vh}
+
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Manrope:wght@300;400;500;600&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{background:${T.bg};color:${T.text};font-family:'Manrope',sans-serif}
@@ -61,7 +63,7 @@ function calcTDEE({ gender, age, weight, height, activity, goal }) {
 async function analyzeFood(base64, mediaType, portionHint, cookMethod, manualCals) {
   const cookNote = cookMethod ? `Способ приготовления: ${cookMethod}. Учти масло/жир если жарка.` : "";
   const manualNote = manualCals ? `Пользователь знает точную калорийность: ${manualCals} ккал — используй именно это число для total.calories, только разбей по БЖУ пропорционально.` : "";
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await fetch("/api/analyze", {
     method:"POST", headers:{"Content-Type":"application/json"},
     body:JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:1000,
       messages:[{role:"user",content:[
@@ -136,7 +138,7 @@ function Bar2({ label, value, max, color, bg }) {
 
 // ─── Card wrapper ─────────────────────────────────────────────────
 function Card({ children, style }) {
-  return <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:18,padding:"20px 18px",marginBottom:12,...style}}>{children}</div>;
+  return <div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:18,padding:"18px 14px",marginBottom:12,width:"100%",boxSizing:"border-box",...style}}>{children}</div>;
 }
 function SectionLabel({ children }) {
   return <div style={{fontSize:10,fontWeight:600,letterSpacing:".14em",color:T.muted,textTransform:"uppercase",marginBottom:14}}>{children}</div>;
@@ -145,7 +147,8 @@ function SectionLabel({ children }) {
 // ─── Onboarding ───────────────────────────────────────────────────
 function Onboarding({ onDone }) {
   const [step,setStep]=useState(0);
-  const [f,setF]=useState({name:"",gender:"female",age:"",weight:"",height:"",activity:"moderate",goal:"maintenance"});
+  const tgName = window.tgUser ? (window.tgUser.first_name || "") : "";
+  const [f,setF]=useState({name:tgName,gender:"female",age:"",weight:"",height:"",activity:"moderate",goal:"maintenance"});
   const s=(k,v)=>setF(p=>({...p,[k]:v}));
   const steps=[
     { title:"Давай познакомимся",
@@ -203,7 +206,7 @@ function Onboarding({ onDone }) {
   const cur=steps[step];
   return <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column"}}>
     <style>{CSS}</style>
-    <div style={{maxWidth:420,margin:"0 auto",padding:"56px 20px 40px",width:"100%",flex:1,display:"flex",flexDirection:"column"}}>
+    <div style={{maxWidth:420,margin:"0 auto",padding:"32px 16px 32px",width:"100%",flex:1,display:"flex",flexDirection:"column"}}>
       {/* Logo */}
       <div style={{marginBottom:52}}>
         <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:36,fontWeight:300,color:T.text,letterSpacing:"-.01em"}}>
@@ -219,7 +222,7 @@ function Onboarding({ onDone }) {
         <div style={{fontSize:13,color:T.muted,marginBottom:28}}>Шаг {step+1} из {steps.length}</div>
         <Card>{cur.content}</Card>
       </div>
-      <button onClick={()=>step<steps.length-1?setStep(s=>s+1):onDone({...f,age:+f.age,weight:+f.weight,height:+f.height})}
+      <button onClick={()=>{window.Telegram?.WebApp?.HapticFeedback?.impactOccurred("light");step<steps.length-1?setStep(s=>s+1):onDone({...f,age:+f.age,weight:+f.weight,height:+f.height})}}
         disabled={!cur.ok}
         style={{width:"100%",background:cur.ok?T.accent:"#e8e4e0",color:cur.ok?"#fff":T.faint,border:"none",padding:"15px",borderRadius:50,fontSize:14,fontWeight:600,cursor:cur.ok?"pointer":"not-allowed",letterSpacing:".02em",transition:"all .3s",marginTop:20}}>
         {step<steps.length-1?"Продолжить →":"Начать"}
@@ -273,9 +276,23 @@ function Today({ profile, norms, day, setDay }) {
   const processFile=useCallback((file)=>{
     if(!file||!file.type.startsWith("image/"))return;
     setErr(null);setPreview(null);
-    const r=new FileReader();
-    r.onload=e=>{const d=e.target.result;setImg(d);setB64(d.split(",")[1]);setMt(file.type);};
-    r.readAsDataURL(file);
+    const reader=new FileReader();
+    reader.onload=e=>{
+      const img=new Image();
+      img.onload=()=>{
+        const canvas=document.createElement("canvas");
+        const MAX=1200;
+        let w=img.width,h=img.height;
+        if(w>MAX){h=Math.round(h*MAX/w);w=MAX;}
+        if(h>MAX){w=Math.round(w*MAX/h);h=MAX;}
+        canvas.width=w;canvas.height=h;
+        canvas.getContext("2d").drawImage(img,0,0,w,h);
+        const jpeg=canvas.toDataURL("image/jpeg",0.85);
+        setImg(jpeg);setB64(jpeg.split(",")[1]);setMt("image/jpeg");
+      };
+      img.src=e.target.result;
+    };
+    reader.readAsDataURL(file);
   },[]);
 
   const analyze=async()=>{
@@ -392,7 +409,7 @@ function Today({ profile, norms, day, setDay }) {
     <Card>
       <SectionLabel>Добавить еду</SectionLabel>
       {!img&&!preview&&<div className="zone" onClick={()=>fileRef.current.click()}>
-        <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>processFile(e.target.files[0])}/>
+        <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>processFile(e.target.files[0])}/>
         <div style={{fontSize:32,marginBottom:10}}>📸</div>
         <div style={{fontSize:14,color:T.muted,fontWeight:500}}>Сфотографируй тарелку</div>
         <div style={{fontSize:11,color:T.faint,marginTop:4}}>JPG · PNG · WEBP</div>
@@ -720,9 +737,9 @@ export default function App() {
 
   if(!profile) return <Onboarding onDone={p=>setProfile(p)}/>;
 
-  return <div style={{minHeight:"100vh",background:T.bg,fontFamily:"'Manrope',sans-serif",paddingBottom:72}}>
+  return <div style={{minHeight:"100vh",background:T.bg,fontFamily:"'Manrope',sans-serif",paddingBottom:72,overflowX:"hidden",width:"100%"}}>
     <style>{CSS}</style>
-    <div style={{maxWidth:460,margin:"0 auto",padding:"36px 18px 20px"}}>
+    <div style={{maxWidth:460,margin:"0 auto",padding:"28px 16px 16px",width:"100%"}}>
       {tab==="today"&&<Today profile={profile} norms={norms} day={today} setDay={setDay}/>}
       {tab==="history"&&<History history={history} norms={norms}/>}
       {tab==="weight"&&<Weight weights={weights} setWeights={setWeights}/>}

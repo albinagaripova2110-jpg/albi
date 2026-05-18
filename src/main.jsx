@@ -2,7 +2,19 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App.jsx'
 
-// Polyfill window.storage for non-Claude environments (uses localStorage)
+// Telegram WebApp init
+const tg = window.Telegram?.WebApp
+if (tg) {
+  tg.ready()
+  tg.expand() // Открыть на весь экран
+  tg.setHeaderColor('#f9f8f6')
+  tg.setBackgroundColor('#f9f8f6')
+}
+
+// Expose Telegram user name globally so App can use it
+window.tgUser = tg?.initDataUnsafe?.user || null
+
+// Polyfill window.storage (localStorage) for non-Claude environments
 if (!window.storage) {
   window.storage = {
     get: async (key) => {
