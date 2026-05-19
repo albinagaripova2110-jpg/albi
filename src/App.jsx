@@ -22,7 +22,6 @@ const T = {
 const CSS = `
 html,body{overflow-x:hidden;width:100%;min-height:100vh}
 
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Manrope:wght@300;400;500;600&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{background:${T.bg};color:${T.text};font-family:'Manrope',sans-serif}
 input,select,button,textarea{font-family:'Manrope',sans-serif}
