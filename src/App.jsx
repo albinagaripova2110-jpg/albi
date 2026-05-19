@@ -34,7 +34,7 @@ input:focus,select:focus{outline:none;border-color:${T.accent}!important;box-sha
 .up{animation:fadeUp .4s cubic-bezier(.16,1,.3,1) forwards}
 @keyframes spin{to{transform:rotate(360deg)}}
 .spin{animation:spin .9s linear infinite;display:inline-block;margin-right:6px}
-.tab{flex:1;background:none;border:none;color:${T.faint};padding:10px 0 8px;cursor:pointer;font-size:10px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;transition:color .2s;display:flex;flex-direction:column;align-items:center;gap:4px;font-family:'Manrope',sans-serif}
+.tab{flex:1;background:none;border:none;color:${T.faint};padding:12px 0 10px;cursor:pointer;font-size:10px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;transition:color .2s;display:flex;flex-direction:column;align-items:center;gap:4px;font-family:'Manrope',sans-serif}
 .tab.on{color:${T.accent}}
 .tab .ico{font-size:18px;line-height:1}
 .btn-pill{padding:7px 16px;border-radius:50px;border:1.5px solid ${T.borderMd};background:${T.surface};color:${T.muted};font-size:12px;font-weight:500;cursor:pointer;transition:all .2s;font-family:'Manrope',sans-serif;letter-spacing:.02em}
@@ -408,12 +408,49 @@ function Today({ profile, norms, day, setDay }) {
     {/* Add photo */}
     <Card>
       <SectionLabel>Добавить еду</SectionLabel>
-      {!img&&!preview&&<div className="zone" onClick={()=>fileRef.current.click()}>
-        <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>processFile(e.target.files[0])}/>
-        <div style={{fontSize:32,marginBottom:10}}>📸</div>
-        <div style={{fontSize:14,color:T.muted,fontWeight:500}}>Сфотографируй тарелку</div>
-        <div style={{fontSize:11,color:T.faint,marginTop:4}}>JPG · PNG · WEBP</div>
+      {!img&&!preview&&!manualMode&&<div>
+        <div className="zone" onClick={()=>fileRef.current.click()}>
+          <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>processFile(e.target.files[0])}/>
+          <div style={{fontSize:32,marginBottom:10}}>📸</div>
+          <div style={{fontSize:14,color:T.muted,fontWeight:500}}>Фото или галерея</div>
+          <div style={{fontSize:11,color:T.faint,marginTop:4}}>Нажми чтобы выбрать</div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:10,margin:"12px 0"}}>
+          <div style={{flex:1,height:1,background:T.border}}/>
+          <span style={{fontSize:11,color:T.faint}}>или</span>
+          <div style={{flex:1,height:1,background:T.border}}/>
+        </div>
+        <button onClick={()=>setManualMode(true)} style={{width:"100%",background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:14,padding:"14px",cursor:"pointer",fontFamily:"Manrope",display:"flex",alignItems:"center",gap:12,transition:"border-color .2s"}}>
+          <span style={{fontSize:22}}>✏️</span>
+          <div style={{textAlign:"left"}}>
+            <div style={{fontSize:13,fontWeight:500,color:T.text}}>Ввести вручную</div>
+            <div style={{fontSize:11,color:T.muted}}>Знаешь калории? Введи сразу</div>
+          </div>
+        </button>
       </div>}
+      {!img&&!preview&&manualMode&&<div className="up" style={{marginTop:8}}>
+          <div style={{background:T.accentBg,border:`1.5px solid ${T.accent}`,borderRadius:14,padding:16}}>
+            <div style={{fontSize:13,fontWeight:600,color:T.accent,marginBottom:12}}>✏️ Ручной ввод</div>
+            <Field label="Название блюда" placeholder="Например: Греческий салат" value={editMeal?.name||""} onChange={e=>setEditMeal(m=>({...m,name:e.target.value}))}/>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              <Field label="Калории" type="number" placeholder="450" value={manualCals} onChange={e=>setManualCals(e.target.value)}/>
+              <Field label="Белки, г" type="number" placeholder="20" value={editMeal?.protein||""} onChange={e=>setEditMeal(m=>({...m,protein:+e.target.value}))}/>
+              <Field label="Жиры, г" type="number" placeholder="15" value={editMeal?.fat||""} onChange={e=>setEditMeal(m=>({...m,fat:+e.target.value}))}/>
+              <Field label="Углеводы, г" type="number" placeholder="40" value={editMeal?.carbs||""} onChange={e=>setEditMeal(m=>({...m,carbs:+e.target.value}))}/>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:4}}>
+              <button onClick={()=>{
+                if(!manualCals)return;
+                const name=editMeal?.name||"Блюдо";
+                const cal=+manualCals;
+                const p=editMeal?.protein||0, f=editMeal?.fat||0, c=editMeal?.carbs||0;
+                setDay(d=>({...d,meals:[...(d.meals||[]),{dishes:[{name,weight:"—",calories:cal,protein:p,fat:f,carbs:c}],total:{calories:cal,protein:p,fat:f,carbs:c},img:null,time:new Date().toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"})}]}));
+                setManualMode(false);setManualCals("");setEditMeal(null);
+              }} style={{background:T.accent,color:"#fff",border:"none",padding:"12px",borderRadius:50,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"Manrope"}}>+ В дневник</button>
+              <button className="ghost-btn" style={{width:"100%"}} onClick={()=>{setManualMode(false);setManualCals("");setEditMeal(null);}}>Отмена</button>
+            </div>
+          </div>
+        </div>}
       {img&&!preview&&<div className="up">
         <div style={{position:"relative",borderRadius:14,overflow:"hidden",marginBottom:14}}>
           <img src={img} style={{width:"100%",maxHeight:220,objectFit:"cover",display:"block"}}/>
@@ -454,7 +491,7 @@ function Today({ profile, norms, day, setDay }) {
             </div>
           </div>
           {manualMode&&<div style={{marginTop:8,display:"flex",gap:8,alignItems:"center"}}>
-            <input style={{...{flex:1,background:T.surface,border:`1.5px solid ${T.accent}`,borderRadius:10,padding:"10px 14px",color:T.text,fontSize:14}}} type="number" placeholder="Ккал (например 450)" value={manualCals} onChange={e=>setManualCals(e.target.value)}/>
+            <input style={{flex:1,background:T.surface,border:`1.5px solid ${T.accent}`,borderRadius:10,padding:"10px 14px",color:T.text,fontSize:14}} type="number" placeholder="Ккал (например 450)" value={manualCals} onChange={e=>setManualCals(e.target.value)}/>
             <span style={{fontSize:12,color:T.muted,flexShrink:0}}>ккал</span>
           </div>}
         </div>
@@ -702,7 +739,7 @@ function Profile({ profile, norms, onSave, onReset }) {
 }
 
 // ─── Root ──────────────────────────────────────────────────────────
-const TABS=[{id:"today",ico:"🍽",l:"Сегодня"},{id:"history",ico:"📊",l:"История"},{id:"weight",ico:"⚖",l:"Вес"},{id:"reminders",ico:"🔔",l:"Будильник"},{id:"profile",ico:"◎",l:"Профиль"}];
+const TABS=[{id:"today",ico:"🍽",l:"Сегодня"},{id:"history",ico:"📊",l:"История"},{id:"weight",ico:"⚖",l:"Вес"},{id:"profile",ico:"◎",l:"Профиль"}];
 
 export default function App() {
   const [ready,setReady]=useState(false);
@@ -737,19 +774,18 @@ export default function App() {
 
   if(!profile) return <Onboarding onDone={p=>setProfile(p)}/>;
 
-  return <div style={{minHeight:"100vh",background:T.bg,fontFamily:"'Manrope',sans-serif",paddingBottom:72,overflowX:"hidden",width:"100%"}}>
+  return <div style={{minHeight:"100vh",background:T.bg,fontFamily:"'Manrope',sans-serif",paddingBottom:90,overflowX:"hidden",width:"100%"}}>
     <style>{CSS}</style>
     <div style={{maxWidth:460,margin:"0 auto",padding:"28px 16px 16px",width:"100%"}}>
       {tab==="today"&&<Today profile={profile} norms={norms} day={today} setDay={setDay}/>}
       {tab==="history"&&<History history={history} norms={norms}/>}
       {tab==="weight"&&<Weight weights={weights} setWeights={setWeights}/>}
-      {tab==="reminders"&&<Reminders reminders={reminders} setReminders={setReminders}/>}
       {tab==="profile"&&<Profile profile={profile} norms={norms}
         onSave={p=>{setProfile(p);setTab("today");}}
         onReset={()=>{setProfile(null);setHistory({});setWeights([]);setReminders([]);}}/>}
     </div>
     {/* Bottom nav */}
-    <div style={{position:"fixed",bottom:0,left:0,right:0,background:"rgba(249,248,246,.95)",backdropFilter:"blur(16px)",borderTop:`1px solid ${T.border}`,display:"flex",justifyContent:"center"}}>
+    <div style={{position:"fixed",bottom:0,left:0,right:0,background:"rgba(249,248,246,.97)",backdropFilter:"blur(20px)",borderTop:`1px solid ${T.border}`,display:"flex",justifyContent:"center",paddingBottom:"env(safe-area-inset-bottom, 8px)"}}>
       <div style={{display:"flex",width:"100%",maxWidth:460}}>
         {TABS.map(t=>(
           <button key={t.id} className={`tab${tab===t.id?" on":""}`} onClick={()=>setTab(t.id)}>
