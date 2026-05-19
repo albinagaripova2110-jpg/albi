@@ -531,6 +531,7 @@ function Today({ profile, norms, day, setDay }) {
 
 // ─── History ───────────────────────────────────────────────────────
 function History({ history, norms }) {
+  const [histExpanded,setHistExpanded]=useState({});
   const sorted=Object.entries(history).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,30);
   const chart=sorted.slice(0,14).reverse().map(([date,d])=>({
     date:fmtDate(date),
@@ -561,19 +562,47 @@ function History({ history, norms }) {
       <SectionLabel>По дням</SectionLabel>
       {sorted.map(([date,d])=>{
         const cal=(d.meals||[]).reduce((s,m)=>s+m.total.calories,0);
+        const eP=(d.meals||[]).reduce((s,m)=>s+(m.total.protein||0),0);
+        const eF=(d.meals||[]).reduce((s,m)=>s+(m.total.fat||0),0);
+        const eC=(d.meals||[]).reduce((s,m)=>s+(m.total.carbs||0),0);
         const over=cal>norms.target;
         const isToday=date===todayKey();
-        return <div key={date} style={{...{display:"flex",flexDirection:"column",gap:6},padding:"10px 0",borderBottom:`1px solid ${T.border}`}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <span style={{fontSize:13,fontWeight:isToday?600:400,color:T.text}}>{isToday?"Сегодня":fmtDate(date)}</span>
-            <div style={{display:"flex",gap:12,alignItems:"center"}}>
-              <span style={{fontSize:11,color:T.faint}}>💧{d.water||0}</span>
-              <span style={{fontWeight:600,color:over?"#e05a4a":T.accent,fontSize:13}}>{cal}</span>
+        const open=histExpanded[date]||false;
+        return <div key={date} style={{padding:"12px 0",borderBottom:`1px solid ${T.border}`}}>
+          <div onClick={()=>setHistExpanded(h=>({...h,[date]:!open}))} style={{cursor:"pointer"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+              <span style={{fontSize:13,fontWeight:isToday?600:400,color:T.text}}>{isToday?"Сегодня":fmtDate(date)}</span>
+              <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                <span style={{fontSize:11,color:T.faint}}>💧{d.water||0}</span>
+                <span style={{fontWeight:700,color:over?"#e05a4a":T.accent,fontSize:14}}>{cal} ккал</span>
+                <span style={{fontSize:11,color:T.faint}}>{open?"▲":"▼"}</span>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:12,marginBottom:6}}>
+              {[["Б",eP,T.blue],["Ж",eF,T.accent],["У",eC,T.green]].map(([l,v,c])=>(
+                <span key={l} style={{fontSize:11,color:T.muted}}>
+                  <span style={{color:c,fontWeight:600}}>{l}</span> {v}г
+                </span>
+              ))}
+            </div>
+            <div style={{height:2,background:T.bg,borderRadius:2,overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${Math.min(cal/norms.target*100,100)}%`,background:over?"#e05a4a":T.accent,borderRadius:2}}/>
             </div>
           </div>
-          <div style={{height:2,background:T.bg,borderRadius:2,overflow:"hidden"}}>
-            <div style={{height:"100%",width:`${Math.min(cal/norms.target*100,100)}%`,background:over?"#e05a4a":T.accent,borderRadius:2}}/>
-          </div>
+          {open&&<div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${T.border}`}}>
+            {(d.meals||[]).length===0&&<div style={{fontSize:12,color:T.faint,textAlign:"center",padding:"6px 0"}}>Нет записей</div>}
+            {(d.meals||[]).map((m,mi)=>(
+              <div key={mi} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0"}}>
+                {m.img?<img src={m.img} style={{width:38,height:38,borderRadius:8,objectFit:"cover",flexShrink:0}}/>
+                  :<div style={{width:38,height:38,borderRadius:8,background:T.accentBg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>🍽</div>}
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:500,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{m.dishes.map(dish=>dish.name).join(", ")}</div>
+                  <div style={{fontSize:10,color:T.muted,marginTop:2}}>{m.time} · Б{m.total.protein} Ж{m.total.fat} У{m.total.carbs}</div>
+                </div>
+                <span style={{fontSize:13,fontWeight:600,color:T.accent,flexShrink:0}}>{m.total.calories}</span>
+              </div>
+            ))}
+          </div>}
         </div>;
       })}
     </Card>
@@ -689,7 +718,7 @@ function Profile({ profile, norms, onSave, onReset }) {
     <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:300,color:T.text,marginBottom:24}}>Профиль</div>
     <Card style={{background:`linear-gradient(135deg,${T.accentBg},${T.surface})`,border:`1px solid ${T.border}`}}>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:0}}>
-        {[["BMR",n.bmr,"базовый обмен"],["TDEE",n.tdee,"с активностью"],["Цель",n.target,"ккал / день"]].map(([t,v,sub])=>(
+        {[["Обмен веществ",n.bmr,"без активности"],["Расход в день",n.tdee,"с учётом активности"],["Твоя цель",n.target,"ккал / день"]].map(([t,v,sub])=>(
           <div key={t} style={{textAlign:"center",padding:"8px 4px",borderRight:t!=="Цель"?`1px solid ${T.border}`:"none"}}>
             <div style={{fontSize:9,fontWeight:600,letterSpacing:".14em",color:T.muted,marginBottom:6}}>{t}</div>
             <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:400,color:T.accent,lineHeight:1}}>{v}</div>
