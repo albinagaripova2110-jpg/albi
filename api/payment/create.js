@@ -18,7 +18,8 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'telegram_id and valid plan required' })
   }
 
-  const domain = process.env.PRODAMUS_DOMAIN || 'albinagaripova.payform.ru'
+  const domain = (process.env.PRODAMUS_DOMAIN || 'albinagaripova.payform.ru')
+    .replace(/^https?:\/\//, '').replace(/\/+$/, '')
   const secretKey = process.env.PRODAMUS_SECRET_KEY
   const supabaseUrl = process.env.SUPABASE_URL
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY
