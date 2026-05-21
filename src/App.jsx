@@ -426,10 +426,10 @@ function Today({ profile, norms, day, setDay, selectedDate, onSelectDate, histor
     {/* Ring + macro rings */}
     <Card style={{display:"flex",alignItems:"center",gap:12}}>
       <Ring eaten={eaten} target={norms.target}/>
-      <div style={{flex:1,display:"flex",gap:4}}>
-        <MacroRing label="Белки" value={eP} max={Math.round(norms.target*.15/4)} color={T.blue}/>
-        <MacroRing label="Жиры" value={eF} max={Math.round(norms.target*.30/9)} color={T.accent}/>
-        <MacroRing label="Углеводы" value={eC} max={Math.round(norms.target*.55/4)} color={T.green}/>
+      <div style={{flex:1}}>
+        <Bar2 label="Белки" value={eP} max={Math.round(norms.target*.15/4)} color={T.blue} bg={T.blueBg}/>
+        <Bar2 label="Жиры" value={eF} max={Math.round(norms.target*.30/9)} color={T.accent} bg={T.accentBg}/>
+        <Bar2 label="Углеводы" value={eC} max={Math.round(norms.target*.55/4)} color={T.green} bg={T.greenBg}/>
       </div>
     </Card>
 
