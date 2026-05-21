@@ -137,7 +137,7 @@ export default async function handler(req, res) {
     // Отправляем уведомление пользователю в бот
     if (botToken) {
       const planNames = { monthly: '1 месяц', quarterly: '3 месяца', yearly: '1 год' }
-      const expiryDate = new Date(newExpiry).toLocaleDateString('ru', { day: 'numeric', month: 'long', year: 'numeric' })
+      const expiryDate = new Date(newExpiry).toLocaleDateString('ru', { day: 'numeric', month: 'long' })
       await sendTelegram(botToken, telegramId,
         `✅ Оплата получена!\n\nПодписка Albi Pro — ${planNames[plan] || plan}\nДоступ открыт до ${expiryDate}\n\nСпасибо, что с нами! 🌿`
       )
