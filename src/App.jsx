@@ -782,12 +782,20 @@ async function syncLoad(tgId){
   return null;
 }
 
+const getTgUser=()=>window.Telegram?.WebApp?.initDataUnsafe?.user||null;
+
 let syncTimer=null;
 function syncSave(tgId,data){
   if(!tgId)return;
   clearTimeout(syncTimer);
   syncTimer=setTimeout(async()=>{
-    try{await fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({telegram_id:tgId,...data})});}
+    const tgUser=getTgUser();
+    try{await fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+      telegram_id:tgId,
+      tg_name:tgUser?.first_name||null,
+      tg_username:tgUser?.username||null,
+      ...data
+    })});}
     catch{}
   },2000);
 }
