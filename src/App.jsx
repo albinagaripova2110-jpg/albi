@@ -922,6 +922,7 @@ function Reminders({ reminders, setReminders }) {
 function Profile({ profile, norms, onSave, onReset, access, tgId }) {
   const [f,setF]=useState({...profile});
   const [copied,setCopied]=useState(false);
+  const [refInfo,setRefInfo]=useState(false);
   const s=(k,v)=>setF(p=>({...p,[k]:v}));
   const n=calcTDEE({...f,age:+f.age,weight:+f.weight,height:+f.height});
 
@@ -969,9 +970,23 @@ function Profile({ profile, norms, onSave, onReset, access, tgId }) {
       {/* Referral */}
       {refLink&&<>
         <div style={{height:1,background:T.border,marginBottom:14}}/>
-        <div style={{fontSize:10,fontWeight:600,letterSpacing:".12em",color:T.muted,marginBottom:8,textTransform:"uppercase"}}>Пригласи подругу</div>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+          <div style={{fontSize:10,fontWeight:600,letterSpacing:".12em",color:T.muted,textTransform:"uppercase"}}>Пригласи друга</div>
+          <button onClick={()=>setRefInfo(v=>!v)} style={{width:16,height:16,borderRadius:"50%",border:`1.5px solid ${T.faint}`,background:"transparent",color:T.faint,fontSize:10,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,lineHeight:1,padding:0}}>?</button>
+        </div>
+
+        {refInfo&&<div style={{background:T.bg,border:`1px solid ${T.border}`,borderRadius:12,padding:"12px 14px",marginBottom:12,fontSize:12,color:T.text,lineHeight:1.7}}>
+          <div style={{fontWeight:600,marginBottom:6,color:T.accent}}>Условия реферальной программы</div>
+          <div style={{marginBottom:4}}>👤 Друг получает <b>скидку 10%</b> на первую подписку</div>
+          <div style={{marginBottom:2,color:T.muted,fontWeight:600,fontSize:11,letterSpacing:".06em",marginTop:8}}>ТЫ ПОЛУЧАЕШЬ:</div>
+          <div>• Друг купил 1 месяц → <b>+7 дней</b></div>
+          <div>• Друг купил 3 месяца → <b>+14 дней</b></div>
+          <div>• Друг купил полгода → <b>+1 месяц</b></div>
+          <div style={{marginTop:8,fontSize:11,color:T.faint}}>Бонус начисляется после оплаты друга</div>
+        </div>}
+
         <div style={{fontSize:12,color:T.muted,marginBottom:10,lineHeight:1.6}}>
-          Поделись ссылкой — подруга получит скидку, а ты бонусные дни 🎁
+          Поделись ссылкой — друг получит скидку, а ты бонусные дни 🎁
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           <div style={{flex:1,background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:10,padding:"9px 12px",fontSize:11,color:T.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
