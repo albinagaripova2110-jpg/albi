@@ -13,6 +13,14 @@ const REFERRAL_BONUS = {
   yearly:    30,
 }
 
+async function sendTelegram(botToken, chatId, text) {
+  await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text })
+  })
+}
+
 async function db(url, supabaseUrl, supabaseKey, options = {}) {
   const res = await fetch(`${supabaseUrl}/rest/v1/${url}`, {
     ...options,
@@ -34,6 +42,7 @@ export default async function handler(req, res) {
   const secretKey = process.env.PRODAMUS_SECRET_KEY
   const supabaseUrl = process.env.SUPABASE_URL
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY
+  const botToken = process.env.TELEGRAM_BOT_TOKEN
 
   try {
     const data = req.body
@@ -123,6 +132,15 @@ export default async function handler(req, res) {
           body: JSON.stringify({ status: 'paid', bonus_days: bonusDays, bonus_applied: true })
         })
       }
+    }
+
+    // Отправляем уведомление пользователю в бот
+    if (botToken) {
+      const planNames = { monthly: '1 месяц', quarterly: '3 месяца', yearly: '1 год' }
+      const expiryDate = new Date(newExpiry).toLocaleDateString('ru', { day: 'numeric', month: 'long', year: 'numeric' })
+      await sendTelegram(botToken, telegramId,
+        `✅ Оплата получена!\n\nПодписка Albi Pro — ${planNames[plan] || plan}\nДоступ открыт до ${expiryDate}\n\nСпасибо, что с нами! 🌿`
+      )
     }
 
     console.log(`Payment OK: tg=${telegramId} plan=${plan} expires=${newExpiry}`)
