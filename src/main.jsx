@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App.jsx'
+import Admin from './Admin.jsx'
 
 // Telegram WebApp init
 const tg = window.Telegram?.WebApp
@@ -36,8 +37,10 @@ if (!window.storage) {
   }
 }
 
+const isAdmin = window.location.pathname === '/admin'
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <App />
+    {isAdmin ? <Admin /> : <App />}
   </StrictMode>,
 )
