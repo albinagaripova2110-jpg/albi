@@ -8,7 +8,8 @@ async function supabase(url, supabaseUrl, supabaseKey, options = {}) {
       ...options.headers,
     }
   })
-  return res.json()
+  const text = await res.text()
+  try { return JSON.parse(text) } catch { return null }
 }
 
 export default async function handler(req, res) {
@@ -27,34 +28,41 @@ export default async function handler(req, res) {
   const supabaseUrl = process.env.SUPABASE_URL
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY
 
-  // Find existing active subscription
+  const now = new Date()
+  let newExpiry
+
+  // Ищем существующую активную подписку
   const existing = await supabase(
     `subscriptions?user_id=eq.${telegram_id}&plan=eq.pro&order=expires_at.desc&limit=1`,
     supabaseUrl, supabaseKey, { method: 'GET' }
   )
 
-  const now = new Date()
-  let newExpiry
-
   if (Array.isArray(existing) && existing.length > 0 && new Date(existing[0].expires_at) > now) {
-    // Extend existing subscription
+    // Продлеваем существующую
     const current = new Date(existing[0].expires_at)
     current.setDate(current.getDate() + parseInt(days))
     newExpiry = current.toISOString()
-    await supabase(
+
+    const patchRes = await supabase(
       `subscriptions?id=eq.${existing[0].id}`,
       supabaseUrl, supabaseKey,
-      { method: 'PATCH', headers: { 'Prefer': 'return=minimal' }, body: JSON.stringify({ expires_at: newExpiry }) }
+      {
+        method: 'PATCH',
+        headers: { 'Prefer': 'return=representation' },
+        body: JSON.stringify({ expires_at: newExpiry, granted_by_admin: true })
+      }
     )
+    if (patchRes?.error) return res.status(500).json({ error: patchRes.error.message || 'Patch failed' })
   } else {
-    // Create new subscription
+    // Создаём новую
     newExpiry = new Date(now.getTime() + parseInt(days) * 24 * 60 * 60 * 1000).toISOString()
-    await supabase(
+
+    const insertRes = await supabase(
       `subscriptions`,
       supabaseUrl, supabaseKey,
       {
         method: 'POST',
-        headers: { 'Prefer': 'resolution=merge-duplicates' },
+        headers: { 'Prefer': 'resolution=merge-duplicates,return=representation' },
         body: JSON.stringify({
           user_id: telegram_id,
           plan: 'pro',
@@ -65,6 +73,7 @@ export default async function handler(req, res) {
         })
       }
     )
+    if (insertRes?.error) return res.status(500).json({ error: insertRes.error.message || 'Insert failed' })
   }
 
   return res.status(200).json({ ok: true, expires_at: newExpiry })
