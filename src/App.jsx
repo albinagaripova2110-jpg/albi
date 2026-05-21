@@ -954,7 +954,7 @@ function Profile({ profile, norms, onSave, onReset, access, tgId }) {
           </>}
           {plan==="pro"&&<>
             <div style={{fontSize:15,fontWeight:700,color:T.green}}>✓ Pro подписка</div>
-            <div style={{fontSize:12,color:T.muted,marginTop:2}}>{access?.trialEndsAt?`До ${new Date(access.trialEndsAt).toLocaleDateString("ru",{day:"numeric",month:"long"})}`:""}</div>
+            <div style={{fontSize:12,color:T.muted,marginTop:2}}>{access?.subEndsAt?`До ${new Date(access.subEndsAt).toLocaleDateString("ru",{day:"numeric",month:"long"})}`:""}</div>
           </>}
           {(!plan||plan==="expired"||plan==="unknown")&&<>
             <div style={{fontSize:15,fontWeight:700,color:T.red}}>Нет активного доступа</div>
@@ -1139,6 +1139,7 @@ export default function App() {
   const [reminders,setReminders]=useState([]);
   const [tab,setTab]=useState("today");
   const [access,setAccess]=useState(null); // null=загрузка, {allowed,plan}
+  const [tgId]=useState(()=>getTgId());
 
   useEffect(()=>{(async()=>{
     try{
@@ -1206,7 +1207,7 @@ export default function App() {
       {tab==="today"&&<Today profile={profile} norms={norms} day={today} setDay={setDay} selectedDate={selectedDate} onSelectDate={setSelectedDate} history={history}/>}
       {tab==="history"&&<History history={history} norms={norms}/>}
       {tab==="weight"&&<Weight weights={weights} setWeights={setWeights}/>}
-      {tab==="profile"&&<Profile profile={profile} norms={norms} access={access} tgId={getTgId()}
+      {tab==="profile"&&<Profile profile={profile} norms={norms} access={access} tgId={tgId}
         onSave={p=>{setProfile(p);setTab("today");}}
         onReset={()=>{setProfile(null);setHistory({});setWeights([]);setReminders([]);}}/>}
     </div>
