@@ -30,8 +30,8 @@ export default async function handler(req, res) {
 
   try {
     const [users, scans, subs] = await Promise.all([
-      supabaseGet(supabaseUrl, supabaseKey, 'admin_users?select=*'),
-      supabaseGet(supabaseUrl, supabaseKey, 'scans?select=id,created_at'),
+      supabaseGet(supabaseUrl, supabaseKey, 'users?select=*&order=created_at.desc'),
+      supabaseGet(supabaseUrl, supabaseKey, 'scans?select=id,user_id,created_at'),
       supabaseGet(supabaseUrl, supabaseKey, 'subscriptions?select=*&plan=eq.pro'),
     ])
 
@@ -48,8 +48,21 @@ export default async function handler(req, res) {
       : 0
 
     const proUsers = Array.isArray(subs)
-      ? subs.filter(s => s.plan === 'pro' && (!s.expires_at || new Date(s.expires_at) > now)).length
+      ? subs.filter(s => s.plan === 'pro' && s.expires_at && new Date(s.expires_at) > now).length
       : 0
+
+    const trialUsers = Array.isArray(users)
+      ? users.filter(u => u.trial_ends_at && new Date(u.trial_ends_at) > now).length
+      : 0
+
+    // Добавляем total_scans к каждому пользователю
+    const scanCounts = {}
+    if (Array.isArray(scans)) {
+      scans.forEach(s => { scanCounts[s.user_id] = (scanCounts[s.user_id] || 0) + 1 })
+    }
+    const usersWithScans = Array.isArray(users)
+      ? users.map(u => ({ ...u, total_scans: scanCounts[u.telegram_id] || 0 }))
+      : []
 
     return res.status(200).json({
       stats: {
@@ -57,8 +70,9 @@ export default async function handler(req, res) {
         newUsersThisWeek,
         scansThisMonth,
         proUsers,
+        trialUsers,
       },
-      users: Array.isArray(users) ? users : [],
+      users: usersWithScans,
     })
   } catch (e) {
     return res.status(500).json({ error: e.message })
