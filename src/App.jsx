@@ -59,31 +59,55 @@ function calcTDEE({ gender, age, weight, height, activity, goal }) {
 }
 
 // ─── AI ───────────────────────────────────────────────────────────
-async function analyzeFood(base64, mediaType, portionHint, cookMethod, manualCals) {
-  const cookNote = cookMethod ? `Способ приготовления: ${cookMethod}. Учти масло/жир если жарка.` : "";
-  const manualNote = manualCals ? `Пользователь знает точную калорийность: ${manualCals} ккал — используй именно это число для total.calories, только разбей по БЖУ пропорционально.` : "";
-  const res = await fetch("/api/analyze", {
-    method:"POST", headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:1000,
-      messages:[{role:"user",content:[
-        {type:"image",source:{type:"base64",media_type:mediaType,data:base64}},
-        {type:"text",text:`Ты опытный диетолог-нутрициолог. Оцени еду на фото максимально точно.
-Размер порции: ${portionHint}.
-${cookNote}
-${manualNote}
-ВАЖНО: В поле "assumptions" напиши что ты предположил(а) при расчёте (способ готовки, наличие масла, соуса и т.д.) — это поможет пользователю скорректировать если нужно.
-Ответь ТОЛЬКО валидным JSON без markdown:
-{"dishes":[{"name":"...","weight":"...г","calories":0,"protein":0,"fat":0,"carbs":0}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"assumptions":"...","comment":"..."}`}
-      ]}]
-    })
-  });
+const JSON_SCHEMA = `{"dishes":[{"name":"...","weight":"...г","calories":0,"protein":0,"fat":0,"carbs":0}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"health_score":8,"recommendation":"...","assumptions":"...","comment":"..."}`;
+const DIET_PROMPT_SUFFIX = `\nВ поле health_score поставь оценку 1-10 (насколько блюдо полезно для здоровья). В поле recommendation — 1 конкретный совет как улучшить это блюдо или что добавить. В поле assumptions — что ты предположил(а) при расчёте.\nОтветь ТОЛЬКО валидным JSON без markdown:\n${JSON_SCHEMA}`;
+
+async function parseAIResponse(res) {
   const raw = await res.text();
-  if(!res.ok) throw new Error(`HTTP ${res.status}: ${raw.slice(0,300)}`);
+  if(!res.ok) {
+    let errData; try{errData=JSON.parse(raw);}catch{}
+    if(errData?.error==="limit_reached") throw new Error(`🔒 ${errData.message}`);
+    throw new Error(`HTTP ${res.status}: ${raw.slice(0,300)}`);
+  }
   let data; try{data=JSON.parse(raw);}catch{throw new Error(`Не JSON: ${raw.slice(0,200)}`);}
   const text=(data.content||[]).map(b=>b.type==="text"?b.text:"").join("");
   if(!text) throw new Error(`Нет текста: ${JSON.stringify(data).slice(0,200)}`);
   const clean=text.replace(/```json\s*/g,"").replace(/```/g,"").trim();
   try{return JSON.parse(clean);}catch{throw new Error(`Модель: ${clean.slice(0,200)}`);}
+}
+
+function getTgHeaders() {
+  const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+  const h = {"Content-Type":"application/json"};
+  if(tgUser?.id) { h["X-Telegram-User-Id"]=String(tgUser.id); h["X-Telegram-User-Name"]=tgUser.first_name||""; h["X-Telegram-Username"]=tgUser.username||""; }
+  return h;
+}
+
+async function analyzeFood(base64, mediaType, portionHint, cookMethod, manualCals) {
+  const cookNote = cookMethod ? `Способ приготовления: ${cookMethod}. Учти масло/жир если жарка.` : "";
+  const manualNote = manualCals ? `Пользователь знает точную калорийность: ${manualCals} ккал — используй именно это число для total.calories, только разбей по БЖУ пропорционально.` : "";
+  const res = await fetch("/api/analyze", {
+    method:"POST", headers:getTgHeaders(),
+    body:JSON.stringify({ model:"gpt-4o-mini", max_tokens:1000,
+      messages:[{role:"user",content:[
+        {type:"image",source:{type:"base64",media_type:mediaType,data:base64}},
+        {type:"text",text:`Ты опытный диетолог-нутрициолог. Оцени еду на фото максимально точно.\nРазмер порции: ${portionHint}.\n${cookNote}\n${manualNote}${DIET_PROMPT_SUFFIX}`}
+      ]}]
+    })
+  });
+  return parseAIResponse(res);
+}
+
+async function analyzeText(description) {
+  const res = await fetch("/api/analyze", {
+    method:"POST", headers:getTgHeaders(),
+    body:JSON.stringify({ text_only:true, model:"gpt-4o-mini", max_tokens:1000,
+      messages:[{role:"user",content:[
+        {type:"text",text:`Ты опытный диетолог-нутрициолог. Оцени блюдо по описанию максимально точно.\nОписание: ${description}${DIET_PROMPT_SUFFIX}`}
+      ]}]
+    })
+  });
+  return parseAIResponse(res);
 }
 
 const todayKey = () => new Date().toISOString().slice(0,10);
@@ -132,6 +156,61 @@ function Bar2({ label, value, max, color, bg }) {
     <div style={{height:3,background:bg,borderRadius:2,overflow:"hidden"}}>
       <div style={{height:"100%",width:`${Math.min((value/max)*100,100)}%`,background:color,borderRadius:2,transition:"width 1.2s cubic-bezier(.16,1,.3,1)"}}/>
     </div>
+  </div>;
+}
+
+// ─── MacroRing ────────────────────────────────────────────────────
+function MacroRing({ label, value, max, color }) {
+  const r=22,cx=28,cy=28,sw=4,circ=2*Math.PI*r;
+  const pct=Math.min(value/(max||1),1), over=value>max;
+  return <div style={{textAlign:"center",flex:1}}>
+    <svg width={56} height={56} viewBox="0 0 56 56">
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke={T.bg} strokeWidth={sw}/>
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke={over?"#e05a4a":color}
+        strokeWidth={sw} strokeDasharray={circ} strokeDashoffset={circ*(1-pct)}
+        strokeLinecap="round" transform={`rotate(-90 ${cx} ${cy})`}
+        style={{transition:"stroke-dashoffset 1.2s cubic-bezier(.16,1,.3,1)"}}/>
+      <text x={cx} y={cy+1} textAnchor="middle" fill={T.text} fontSize="10" fontWeight="700" fontFamily="Manrope">{value}</text>
+      <text x={cx} y={cy+12} textAnchor="middle" fill={T.faint} fontSize="8" fontFamily="Manrope">/{max}</text>
+    </svg>
+    <div style={{fontSize:10,color:T.muted,marginTop:2,fontWeight:500}}>{label}</div>
+  </div>;
+}
+
+// ─── HealthBar ────────────────────────────────────────────────────
+function HealthBar({ score }) {
+  const color = score>=7?T.green:score>=4?"#b07800":"#e05a4a";
+  const bg = score>=7?T.greenBg:score>=4?"#fff8e6":"#fdecea";
+  return <div style={{marginTop:10}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+      <span style={{fontSize:12,color:T.muted,fontWeight:500}}>💚 Полезность</span>
+      <span style={{background:bg,color,fontSize:11,fontWeight:700,padding:"2px 10px",borderRadius:50}}>{score}/10</span>
+    </div>
+    <div style={{height:5,background:T.bg,borderRadius:3,overflow:"hidden"}}>
+      <div style={{height:"100%",width:`${score*10}%`,borderRadius:3,background:"linear-gradient(to right,#e05a4a,#e8a44a,#5a8a6a)",transition:"width 1s cubic-bezier(.16,1,.3,1)"}}/>
+    </div>
+  </div>;
+}
+
+// ─── WeekStrip ────────────────────────────────────────────────────
+const DAY_NAMES=["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+function WeekStrip({ selectedDate, onSelect, history }) {
+  const today=new Date();
+  const dow=today.getDay();
+  const mon=new Date(today); mon.setDate(today.getDate()-(dow===0?6:dow-1));
+  const days=Array.from({length:7},(_,i)=>{const d=new Date(mon);d.setDate(mon.getDate()+i);return d;});
+  return <div style={{display:"flex",gap:4,marginBottom:16}}>
+    {days.map((d,i)=>{
+      const key=d.toISOString().slice(0,10);
+      const sel=key===selectedDate, isToday=key===todayKey();
+      const hasData=(history[key]?.meals||[]).length>0;
+      return <div key={key} onClick={()=>onSelect(key)}
+        style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"8px 2px",borderRadius:12,background:sel?T.accent:isToday?T.accentBg:"transparent",cursor:"pointer",transition:"all .2s"}}>
+        <span style={{fontSize:9,fontWeight:500,color:sel?"#fff":T.faint,letterSpacing:".05em"}}>{DAY_NAMES[i]}</span>
+        <span style={{fontSize:14,fontWeight:sel?700:400,color:sel?"#fff":isToday?T.accent:T.text}}>{d.getDate()}</span>
+        <div style={{width:4,height:4,borderRadius:"50%",background:hasData?(sel?"rgba(255,255,255,.7)":T.accent):"transparent"}}/>
+      </div>;
+    })}
   </div>;
 }
 
@@ -232,13 +311,15 @@ function Onboarding({ onDone }) {
 }
 
 // ─── Today ────────────────────────────────────────────────────────
-function Today({ profile, norms, day, setDay }) {
+function Today({ profile, norms, day, setDay, selectedDate, onSelectDate, history }) {
   const [img,setImg]=useState(null);
   const [b64,setB64]=useState(null);
   const [mt,setMt]=useState(null);
   const [portion,setPortion]=useState("standard");
   const [cookMethod,setCookMethod]=useState(null);
   const [manualMode,setManualMode]=useState(false);
+  const [textMode,setTextMode]=useState(false);
+  const [textInput,setTextInput]=useState("");
   const [manualCals,setManualCals]=useState("");
   const [loading,setLoading]=useState(false);
   const [err,setErr]=useState(null);
@@ -316,30 +397,39 @@ function Today({ profile, norms, day, setDay }) {
     setEditMeal(m=>({...m,dishes,total}));
   };
 
+  const isToday = selectedDate===todayKey();
+  const selDateObj = new Date(selectedDate+"T00:00:00");
+  const selLabel = isToday?"Сегодня":selDateObj.toLocaleDateString("ru",{weekday:"long",day:"numeric",month:"long"});
+  const fit = eaten>0 && eaten<=norms.target;
+
   return <div>
+    {/* Week strip */}
+    <WeekStrip selectedDate={selectedDate} onSelect={onSelectDate} history={history}/>
+
     {/* Header */}
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
       <div>
-        <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:30,fontWeight:300,color:T.text,lineHeight:1.1}}>
+        <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:300,color:T.text,lineHeight:1.1}}>
           {profile.name}<span style={{color:T.accent}}>·</span>
         </div>
-        <div style={{fontSize:12,color:T.muted,marginTop:4}}>{new Date().toLocaleDateString("ru",{weekday:"long",day:"numeric",month:"long"})}</div>
+        <div style={{fontSize:12,color:T.muted,marginTop:4}}>{selLabel}</div>
       </div>
-      <div style={{textAlign:"right"}}>
-        <div style={{fontSize:11,color:rem>=0?T.green:"#e05a4a",fontWeight:600,letterSpacing:".02em"}}>
+      <div style={{textAlign:"right",display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
+        {fit&&<div style={{background:T.greenBg,color:T.green,fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:50}}>🏆 Fit!</div>}
+        <div style={{fontSize:11,color:rem>=0?T.green:"#e05a4a",fontWeight:600}}>
           {rem>=0?`↓ ${rem} ккал осталось`:`↑ ${Math.abs(rem)} перебор`}
         </div>
-        <div style={{fontSize:10,color:T.faint,marginTop:2}}>норма {norms.target} ккал</div>
+        <div style={{fontSize:10,color:T.faint}}>норма {norms.target} ккал</div>
       </div>
     </div>
 
-    {/* Ring + macros */}
-    <Card style={{display:"flex",alignItems:"center",gap:16}}>
+    {/* Ring + macro rings */}
+    <Card style={{display:"flex",alignItems:"center",gap:12}}>
       <Ring eaten={eaten} target={norms.target}/>
-      <div style={{flex:1}}>
-        <Bar2 label="Белки" value={eP} max={Math.round(norms.target*.15/4)} color={T.blue} bg={T.blueBg}/>
-        <Bar2 label="Жиры" value={eF} max={Math.round(norms.target*.30/9)} color={T.accent} bg={T.accentBg}/>
-        <Bar2 label="Углеводы" value={eC} max={Math.round(norms.target*.55/4)} color={T.green} bg={T.greenBg}/>
+      <div style={{flex:1,display:"flex",gap:4}}>
+        <MacroRing label="Белки" value={eP} max={Math.round(norms.target*.15/4)} color={T.blue}/>
+        <MacroRing label="Жиры" value={eF} max={Math.round(norms.target*.30/9)} color={T.accent}/>
+        <MacroRing label="Углеводы" value={eC} max={Math.round(norms.target*.55/4)} color={T.green}/>
       </div>
     </Card>
 
@@ -404,28 +494,49 @@ function Today({ profile, norms, day, setDay }) {
       </div>
     </div>}
 
-    {/* Add photo */}
-    <Card>
+    {/* Add food */}
+    {isToday&&<Card>
       <SectionLabel>Добавить еду</SectionLabel>
-      {!img&&!preview&&!manualMode&&<div>
+      {!img&&!preview&&!manualMode&&!textMode&&<div>
         <div className="zone" onClick={()=>fileRef.current.click()}>
           <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>processFile(e.target.files[0])}/>
           <div style={{fontSize:32,marginBottom:10}}>📸</div>
           <div style={{fontSize:14,color:T.muted,fontWeight:500}}>Фото или галерея</div>
           <div style={{fontSize:11,color:T.faint,marginTop:4}}>Нажми чтобы выбрать</div>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:10,margin:"12px 0"}}>
-          <div style={{flex:1,height:1,background:T.border}}/>
-          <span style={{fontSize:11,color:T.faint}}>или</span>
-          <div style={{flex:1,height:1,background:T.border}}/>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}>
+          <button onClick={()=>setTextMode(true)} style={{background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:14,padding:"12px 10px",cursor:"pointer",fontFamily:"Manrope",display:"flex",alignItems:"center",gap:8,transition:"border-color .2s"}}>
+            <span style={{fontSize:20}}>💬</span>
+            <div style={{textAlign:"left"}}>
+              <div style={{fontSize:12,fontWeight:500,color:T.text}}>Описать текстом</div>
+              <div style={{fontSize:10,color:T.muted}}>ИИ посчитает сам</div>
+            </div>
+          </button>
+          <button onClick={()=>setManualMode(true)} style={{background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:14,padding:"12px 10px",cursor:"pointer",fontFamily:"Manrope",display:"flex",alignItems:"center",gap:8,transition:"border-color .2s"}}>
+            <span style={{fontSize:20}}>✏️</span>
+            <div style={{textAlign:"left"}}>
+              <div style={{fontSize:12,fontWeight:500,color:T.text}}>Ввести вручную</div>
+              <div style={{fontSize:10,color:T.muted}}>Знаешь калории?</div>
+            </div>
+          </button>
         </div>
-        <button onClick={()=>setManualMode(true)} style={{width:"100%",background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:14,padding:"14px",cursor:"pointer",fontFamily:"Manrope",display:"flex",alignItems:"center",gap:12,transition:"border-color .2s"}}>
-          <span style={{fontSize:22}}>✏️</span>
-          <div style={{textAlign:"left"}}>
-            <div style={{fontSize:13,fontWeight:500,color:T.text}}>Ввести вручную</div>
-            <div style={{fontSize:11,color:T.muted}}>Знаешь калории? Введи сразу</div>
+      </div>}
+      {/* Text mode */}
+      {textMode&&!preview&&<div className="up">
+        <div style={{background:T.blueBg,border:`1.5px solid ${T.blue}`,borderRadius:14,padding:16}}>
+          <div style={{fontSize:13,fontWeight:600,color:T.blue,marginBottom:10}}>💬 Опиши блюдо</div>
+          <textarea value={textInput} onChange={e=>setTextInput(e.target.value)}
+            placeholder="Например: тарелка борща со сметаной и кусок чёрного хлеба"
+            style={{width:"100%",background:T.surface,border:`1.5px solid ${T.border}`,borderRadius:10,padding:"11px 14px",fontSize:13,color:T.text,fontFamily:"Manrope",resize:"none",minHeight:80,boxSizing:"border-box"}}/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}>
+            <button onClick={async()=>{if(!textInput.trim())return;setLoading(true);setErr(null);try{const res=await analyzeText(textInput);setPreview({result:res,img:null});setTextInput("");}catch(e){setErr(e.message);}finally{setLoading(false);}}}
+              disabled={!textInput.trim()||loading}
+              style={{background:loading?T.faint:T.blue,color:"#fff",border:"none",padding:"12px",borderRadius:50,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"Manrope"}}>
+              {loading?<><span className="spin">○</span>Считаю…</>:"Посчитать →"}
+            </button>
+            <button className="ghost-btn" style={{width:"100%"}} onClick={()=>{setTextMode(false);setTextInput("");}}>Отмена</button>
           </div>
-        </button>
+        </div>
       </div>}
       {!img&&!preview&&manualMode&&<div className="up" style={{marginTop:8}}>
           <div style={{background:T.accentBg,border:`1.5px solid ${T.accent}`,borderRadius:14,padding:16}}>
@@ -515,17 +626,22 @@ function Today({ profile, norms, day, setDay }) {
             <span style={{fontWeight:600,color:T.text}}>{d.calories}</span>
           </div>
         ))}
-        {preview.result.assumptions&&<div style={{fontSize:12,lineHeight:1.6,margin:"12px 0",padding:"10px 12px",background:T.blueBg,border:`1px solid #c0d4e8`,borderRadius:10}}>
-          <span style={{fontWeight:600,color:T.blue}}>💭 Допущения ИИ: </span>
+        {preview.result.health_score&&<HealthBar score={preview.result.health_score}/>}
+        {preview.result.recommendation&&<div style={{fontSize:12,lineHeight:1.6,margin:"10px 0",padding:"10px 12px",background:T.greenBg,border:`1px solid #b8d4c0`,borderRadius:10}}>
+          <span style={{fontWeight:600,color:T.green}}>🤖 Совет ИИ: </span>
+          <span style={{color:T.green}}>{preview.result.recommendation}</span>
+        </div>}
+        {preview.result.assumptions&&<div style={{fontSize:12,lineHeight:1.6,margin:"8px 0",padding:"10px 12px",background:T.blueBg,border:`1px solid #c0d4e8`,borderRadius:10}}>
+          <span style={{fontWeight:600,color:T.blue}}>💭 Допущения: </span>
           <span style={{color:T.blue}}>{preview.result.assumptions}</span>
         </div>}
-        {preview.result.comment&&<div style={{fontSize:12,color:T.muted,lineHeight:1.7,margin:"12px 0",padding:"10px 12px",background:T.bg,borderRadius:10}}>{preview.result.comment}</div>}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:14}}>
           <button onClick={addMeal} style={{background:T.accent,color:"#fff",border:"none",padding:"13px",borderRadius:50,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"Manrope"}}>+ В дневник</button>
-          <button className="ghost-btn" style={{width:"100%"}} onClick={()=>setPreview(null)}>Отмена</button>
+          <button className="ghost-btn" style={{width:"100%"}} onClick={()=>{setPreview(null);setTextMode(false);}}>Отмена</button>
         </div>
       </div>}
-    </Card>
+    </Card>}
+    {!isToday&&<div style={{textAlign:"center",padding:"20px 0",color:T.faint,fontSize:12}}>Добавление еды доступно только для сегодняшнего дня</div>}
   </div>;
 }
 
@@ -848,8 +964,9 @@ export default function App() {
     syncSave(tgId,{profile,history,weights,reminders});
   },[profile,history,weights,reminders,ready]);
 
-  const today=history[todayKey()]||{meals:[],water:0};
-  const setDay=(fn)=>setHistory(h=>({...h,[todayKey()]:typeof fn==="function"?fn(h[todayKey()]||{meals:[],water:0}):fn}));
+  const [selectedDate,setSelectedDate]=useState(todayKey());
+  const today=history[selectedDate]||{meals:[],water:0};
+  const setDay=(fn)=>setHistory(h=>({...h,[selectedDate]:typeof fn==="function"?fn(h[selectedDate]||{meals:[],water:0}):fn}));
   const norms=profile?calcTDEE(profile):{target:2000,tdee:2000,bmr:1600};
 
   if(!ready) return <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -862,7 +979,7 @@ export default function App() {
   return <div style={{minHeight:"100vh",background:T.bg,fontFamily:"'Manrope',sans-serif",paddingBottom:90,overflowX:"hidden",width:"100%"}}>
     <style>{CSS}</style>
     <div style={{maxWidth:460,margin:"0 auto",padding:"28px 16px 16px",width:"100%"}}>
-      {tab==="today"&&<Today profile={profile} norms={norms} day={today} setDay={setDay}/>}
+      {tab==="today"&&<Today profile={profile} norms={norms} day={today} setDay={setDay} selectedDate={selectedDate} onSelectDate={setSelectedDate} history={history}/>}
       {tab==="history"&&<History history={history} norms={norms}/>}
       {tab==="weight"&&<Weight weights={weights} setWeights={setWeights}/>}
       {tab==="profile"&&<Profile profile={profile} norms={norms}
