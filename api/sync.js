@@ -46,6 +46,21 @@ export default async function handler(req, res) {
     const { telegram_id, profile, history, weights, reminders } = req.body
     if (!telegram_id) return res.status(400).json({ error: 'telegram_id required' })
 
+    // Убедимся что пользователь существует в таблице users
+    await supabaseRequest(
+      `${supabaseUrl}/rest/v1/users`,
+      {
+        method: 'POST',
+        headers: { 'Prefer': 'resolution=merge-duplicates' },
+        body: JSON.stringify({
+          telegram_id,
+          name: profile?.name || null,
+          last_seen_at: new Date().toISOString(),
+        })
+      },
+      supabaseKey
+    )
+
     // Убираем картинки из истории перед сохранением (экономим место)
     const historyNoImages = history ? Object.fromEntries(
       Object.entries(history).map(([date, day]) => [
