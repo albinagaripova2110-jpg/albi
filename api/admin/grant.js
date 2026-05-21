@@ -27,6 +27,7 @@ export default async function handler(req, res) {
 
   const supabaseUrl = process.env.SUPABASE_URL
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY
+  const botToken = process.env.TELEGRAM_BOT_TOKEN
 
   const now = new Date()
   let newExpiry
@@ -74,6 +75,19 @@ export default async function handler(req, res) {
       }
     )
     if (insertRes?.error) return res.status(500).json({ error: insertRes.error.message || 'Insert failed' })
+  }
+
+  // Уведомление пользователю в Telegram
+  if (botToken) {
+    const expiryDate = new Date(newExpiry).toLocaleDateString('ru', { day: 'numeric', month: 'long' })
+    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: telegram_id,
+        text: `🎁 Тебе выдан доступ Albi Pro!\n\nПодписка активна до ${expiryDate}\n\nПриятного использования! 🌿`
+      })
+    }).catch(() => {})
   }
 
   return res.status(200).json({ ok: true, expires_at: newExpiry })

@@ -1024,7 +1024,7 @@ function Profile({ profile, norms, onSave, onReset, access, tgId }) {
           <div style={{marginBottom:2,color:T.muted,fontWeight:600,fontSize:11,letterSpacing:".06em",marginTop:8}}>ТЫ ПОЛУЧАЕШЬ:</div>
           <div>• Друг купил 1 месяц → <b>+7 дней</b></div>
           <div>• Друг купил 3 месяца → <b>+14 дней</b></div>
-          <div>• Друг купил полгода → <b>+1 месяц</b></div>
+          <div>• Друг купил 1 год → <b>+1 месяц</b></div>
           <div style={{marginTop:8,fontSize:11,color:T.faint}}>Бонус начисляется после оплаты друга</div>
         </div>}
 
@@ -1137,6 +1137,18 @@ function Paywall({ tgId }) {
     {id:"yearly",   label:"1 год",    price:1990, priceStr:"1990 ₽",sub:"166 ₽/мес",  badge:"−33%",},
   ];
 
+  // Проверяем реферальную скидку при открытии экрана
+  useEffect(()=>{
+    if(!tgId) return;
+    fetch(`/api/sync?telegram_id=${tgId}`).then(r=>r.json()).then(d=>{
+      // Проверяем есть ли реферал — если да, покажем скидку
+      if(d?.access) return; // уже загружено через основной sync
+    }).catch(()=>{});
+    // Запрашиваем наличие реферала напрямую
+    fetch("/api/payment/create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({telegram_id:tgId,plan:"check"})})
+      .then(r=>r.json()).then(d=>{ if(d.has_discount) setDiscount(true); }).catch(()=>{});
+  },[tgId]);
+
   const pay=async()=>{
     if(!tgId){
       window.open("https://t.me/AlbiScan_bot","_blank"); return;
@@ -1146,11 +1158,11 @@ function Paywall({ tgId }) {
       const r=await fetch("/api/payment/create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({telegram_id:tgId,plan:sel})});
       const d=await r.json();
       if(d.url){
-        setDiscount(d.has_discount);
+        if(d.has_discount) setDiscount(true);
         if(window.Telegram?.WebApp?.openLink) window.Telegram.WebApp.openLink(d.url);
         else window.open(d.url,"_blank");
       }
-    }catch(e){console.error(e);}
+    }catch(e){}
     setLoading(false);
   };
   return <div style={{minHeight:"100vh",background:T.bg,fontFamily:"'Manrope',sans-serif",display:"flex",flexDirection:"column",alignItems:"center",padding:"48px 20px 40px"}}>

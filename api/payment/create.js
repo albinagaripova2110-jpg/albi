@@ -14,32 +14,36 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
   const { telegram_id, plan } = req.body
-  if (!telegram_id || !plan || !PLANS[plan]) {
-    return res.status(400).json({ error: 'telegram_id and valid plan required' })
-  }
+  if (!telegram_id) return res.status(400).json({ error: 'telegram_id required' })
 
-  const domain = (process.env.PRODAMUS_DOMAIN || 'albinagaripova.payform.ru')
-    .replace(/^https?:\/\//, '').replace(/\/+$/, '')
-  const secretKey = process.env.PRODAMUS_SECRET_KEY
   const supabaseUrl = process.env.SUPABASE_URL
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY
 
-  let price = PLANS[plan].price
   let hasDiscount = false
 
-  // Реферальная скидка 10%
+  // Проверяем реферальную скидку (работает и для plan=check)
   if (supabaseUrl && supabaseKey && telegram_id) {
     try {
       const refs = await fetch(
         `${supabaseUrl}/rest/v1/referrals?referee_id=eq.${telegram_id}&select=id&limit=1`,
         { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } }
       ).then(r => r.json())
-      if (Array.isArray(refs) && refs.length > 0) {
-        price = Math.round(price * 0.9)
-        hasDiscount = true
-      }
+      if (Array.isArray(refs) && refs.length > 0) hasDiscount = true
     } catch {}
   }
+
+  // Если plan=check — только проверяем скидку, не создаём платёж
+  if (!plan || plan === 'check' || !PLANS[plan]) {
+    if (plan && plan !== 'check') return res.status(400).json({ error: 'Invalid plan' })
+    return res.status(200).json({ has_discount: hasDiscount })
+  }
+
+  const domain = (process.env.PRODAMUS_DOMAIN || 'albinagaripova.payform.ru')
+    .replace(/^https?:\/\//, '').replace(/\/+$/, '')
+  const secretKey = process.env.PRODAMUS_SECRET_KEY
+
+  let price = PLANS[plan].price
+  if (hasDiscount) price = Math.round(price * 0.9)
 
   const orderId = `albi_${telegram_id}_${plan}_${Date.now()}`
 

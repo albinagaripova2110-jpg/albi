@@ -64,6 +64,18 @@ create table if not exists payment_orders (
   created_at  timestamptz default now()
 );
 
+create table if not exists promo_codes (
+  id          bigserial primary key,
+  code        text unique not null,
+  bonus_days  int default 0,
+  discount_pct int default 0,
+  max_uses    int,
+  uses_count  int default 0,
+  is_active   boolean default true,
+  expires_at  timestamptz,
+  created_at  timestamptz default now()
+);
+
 -- Index for fast scan counting per user
 create index if not exists scans_user_id_idx on scans(user_id);
 create index if not exists scans_created_at_idx on scans(created_at);

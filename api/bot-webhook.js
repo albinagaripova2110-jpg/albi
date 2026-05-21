@@ -8,7 +8,8 @@ async function supabase(url, supabaseUrl, supabaseKey, options = {}) {
       ...options.headers,
     }
   })
-  return res.json()
+  const text = await res.text()
+  try { return JSON.parse(text) } catch { return null }
 }
 
 async function sendTelegram(botToken, chatId, text, extra = {}) {

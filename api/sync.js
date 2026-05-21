@@ -8,7 +8,8 @@ async function supabaseRequest(url, options, supabaseKey) {
       ...options.headers,
     }
   })
-  return res.json()
+  const text = await res.text()
+  try { return JSON.parse(text) } catch { return null }
 }
 
 export default async function handler(req, res) {
