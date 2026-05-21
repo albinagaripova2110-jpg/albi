@@ -919,12 +919,71 @@ function Reminders({ reminders, setReminders }) {
 }
 
 // ─── Profile ────────────────────────────────────────────────────────
-function Profile({ profile, norms, onSave, onReset }) {
+function Profile({ profile, norms, onSave, onReset, access, tgId }) {
   const [f,setF]=useState({...profile});
+  const [copied,setCopied]=useState(false);
   const s=(k,v)=>setF(p=>({...p,[k]:v}));
   const n=calcTDEE({...f,age:+f.age,weight:+f.weight,height:+f.height});
+
+  const refLink = tgId ? `https://t.me/AlbiScan_bot?start=ref_${tgId}` : null;
+  const copyRef = () => {
+    if(!refLink) return;
+    navigator.clipboard.writeText(refLink).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2000);}).catch(()=>{});
+  };
+  const openBot = () => {
+    const url = "https://t.me/AlbiScan_bot";
+    if(window.Telegram?.WebApp?.openTelegramLink) window.Telegram.WebApp.openTelegramLink(url);
+    else window.open(url,"_blank");
+  };
+
+  const now = new Date();
+  const plan = access?.plan;
+  const trialDays = access?.trialEndsAt ? Math.max(0, Math.ceil((new Date(access.trialEndsAt)-now)/86400000)) : null;
+
   return <div>
     <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:300,color:T.text,marginBottom:24}}>Профиль</div>
+
+    {/* Subscription card */}
+    <Card style={{marginBottom:0}}>
+      <SectionLabel>Подписка</SectionLabel>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+        <div>
+          {plan==="trial"&&<>
+            <div style={{fontSize:15,fontWeight:700,color:T.accent}}>Пробный период</div>
+            <div style={{fontSize:12,color:T.muted,marginTop:2}}>{trialDays!==null?`Осталось ${trialDays} дн.`:"Скоро истекает"}</div>
+          </>}
+          {plan==="pro"&&<>
+            <div style={{fontSize:15,fontWeight:700,color:T.green}}>✓ Pro подписка</div>
+            <div style={{fontSize:12,color:T.muted,marginTop:2}}>{access?.trialEndsAt?`До ${new Date(access.trialEndsAt).toLocaleDateString("ru",{day:"numeric",month:"long"})}`:""}</div>
+          </>}
+          {(!plan||plan==="expired"||plan==="unknown")&&<>
+            <div style={{fontSize:15,fontWeight:700,color:T.red}}>Нет активного доступа</div>
+            <div style={{fontSize:12,color:T.muted,marginTop:2}}>Оформи подписку для продолжения</div>
+          </>}
+        </div>
+        <button onClick={openBot} style={{background:T.accent,color:"#fff",border:"none",padding:"8px 18px",borderRadius:50,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"Manrope",flexShrink:0}}>
+          {plan==="pro"?"Продлить":"Оформить"}
+        </button>
+      </div>
+
+      {/* Referral */}
+      {refLink&&<>
+        <div style={{height:1,background:T.border,marginBottom:14}}/>
+        <div style={{fontSize:10,fontWeight:600,letterSpacing:".12em",color:T.muted,marginBottom:8,textTransform:"uppercase"}}>Пригласи подругу</div>
+        <div style={{fontSize:12,color:T.muted,marginBottom:10,lineHeight:1.6}}>
+          Поделись ссылкой — подруга получит скидку, а ты бонусные дни 🎁
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <div style={{flex:1,background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:10,padding:"9px 12px",fontSize:11,color:T.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+            {refLink}
+          </div>
+          <button onClick={copyRef} style={{background:copied?T.green:T.accent,color:"#fff",border:"none",padding:"9px 16px",borderRadius:10,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"Manrope",flexShrink:0,transition:"background .2s"}}>
+            {copied?"✓":"Копировать"}
+          </button>
+        </div>
+      </>}
+    </Card>
+
     <Card style={{background:`linear-gradient(135deg,${T.accentBg},${T.surface})`,border:`1px solid ${T.border}`}}>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:0}}>
         {[["Обмен веществ",n.bmr,"без активности"],["Расход в день",n.tdee,"с учётом активности"],["Твоя цель",n.target,"ккал / день"]].map(([t,v,sub])=>(
@@ -1147,7 +1206,7 @@ export default function App() {
       {tab==="today"&&<Today profile={profile} norms={norms} day={today} setDay={setDay} selectedDate={selectedDate} onSelectDate={setSelectedDate} history={history}/>}
       {tab==="history"&&<History history={history} norms={norms}/>}
       {tab==="weight"&&<Weight weights={weights} setWeights={setWeights}/>}
-      {tab==="profile"&&<Profile profile={profile} norms={norms}
+      {tab==="profile"&&<Profile profile={profile} norms={norms} access={access} tgId={getTgId()}
         onSave={p=>{setProfile(p);setTab("today");}}
         onReset={()=>{setProfile(null);setHistory({});setWeights([]);setReminders([]);}}/>}
     </div>
