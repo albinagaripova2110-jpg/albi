@@ -43,6 +43,22 @@ export default async function handler(req, res) {
 
   const orderId = `albi_${telegram_id}_${plan}_${Date.now()}`
 
+  // Сохраняем маппинг orderId → telegram_id + plan (на случай если Продамус не вернёт наш order_id)
+  if (supabaseUrl && supabaseKey) {
+    try {
+      await fetch(`${supabaseUrl}/rest/v1/payment_orders`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Prefer': 'resolution=ignore-duplicates',
+        },
+        body: JSON.stringify({ order_id: orderId, telegram_id: parseInt(telegram_id), plan, price, created_at: new Date().toISOString() })
+      })
+    } catch {}
+  }
+
   const params = {
     do: 'pay',
     order_id: orderId,

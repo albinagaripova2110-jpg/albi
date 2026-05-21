@@ -79,24 +79,77 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true })
     }
 
-    // order_id формат: albi_{telegram_id}_{plan}_{timestamp}
-    const orderId = data.order_id || data.orderId || ''
-    const parts = orderId.split('_')
-    console.log('Order parts:', parts)
+    // order_id может быть нашим albi_... или внутренним ID Продамуса
+    const rawOrderId = data.order_id || data.orderId || data.order_num || ''
+    console.log('Raw order_id from Prodamus:', rawOrderId)
 
-    if (parts.length < 4 || parts[0] !== 'albi') {
-      console.error('Invalid order_id:', orderId)
-      return res.status(200).json({ ok: false, error: 'Invalid order_id' })
+    let telegramId, plan, days
+
+    // Сначала пробуем распарсить как наш формат albi_{telegram_id}_{plan}_{timestamp}
+    const parts = rawOrderId.split('_')
+    if (parts.length >= 4 && parts[0] === 'albi') {
+      telegramId = parseInt(parts[1])
+      plan = parts[2]
+      days = PLAN_DAYS[plan]
+      console.log('Parsed from order_id directly:', { telegramId, plan, days })
     }
 
-    const telegramId = parseInt(parts[1])
-    const plan = parts[2]
-    const days = PLAN_DAYS[plan]
+    // Если не получилось — ищем в payment_orders по нашему orderId из других полей
+    if (!telegramId || !days) {
+      const candidateIds = [
+        data.payment_orderid,
+        data.merchant_order_id,
+        data.custom_order_id,
+        data.description,
+        data.comment,
+        data.order_description,
+      ].filter(Boolean)
+      console.log('Trying candidate order fields:', candidateIds)
+
+      for (const candidate of candidateIds) {
+        const p = String(candidate).split('_')
+        if (p.length >= 4 && p[0] === 'albi') {
+          telegramId = parseInt(p[1])
+          plan = p[2]
+          days = PLAN_DAYS[plan]
+          console.log('Found our orderId in field:', { candidate, telegramId, plan })
+          break
+        }
+      }
+    }
+
+    // Последний шанс: ищем в таблице payment_orders — самый свежий необработанный
+    if ((!telegramId || !days) && supabaseUrl && supabaseKey) {
+      console.log('Looking up payment_orders for recent order, rawOrderId:', rawOrderId)
+      const orders = await db(
+        `payment_orders?processed=eq.false&order=created_at.desc&limit=5`,
+        supabaseUrl, supabaseKey, { method: 'GET' }
+      )
+      console.log('Recent payment_orders:', JSON.stringify(orders))
+
+      if (Array.isArray(orders) && orders.length > 0) {
+        const cutoff = new Date(Date.now() - 30 * 60 * 1000)
+        const recent = orders.find(o => new Date(o.created_at) > cutoff)
+        if (recent) {
+          telegramId = recent.telegram_id
+          plan = recent.plan
+          days = PLAN_DAYS[plan]
+          console.log('Using recent payment_order:', { orderId: recent.order_id, telegramId, plan })
+          await db(`payment_orders?order_id=eq.${encodeURIComponent(recent.order_id)}`, supabaseUrl, supabaseKey, {
+            method: 'PATCH',
+            headers: { 'Prefer': 'return=minimal' },
+            body: JSON.stringify({ processed: true })
+          })
+        }
+      }
+    }
 
     if (!telegramId || !days) {
-      console.error('Unknown plan or invalid telegramId:', plan, telegramId)
-      return res.status(200).json({ ok: false, error: 'Unknown plan' })
+      console.error('Could not resolve telegramId/plan from webhook data:', JSON.stringify(data))
+      return res.status(200).json({ ok: false, error: 'Cannot resolve order' })
     }
+
+    console.log('Resolved:', { telegramId, plan, days })
 
     const now = new Date()
     const newExpiry = new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString()
