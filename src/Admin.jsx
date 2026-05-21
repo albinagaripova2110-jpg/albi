@@ -48,12 +48,24 @@ function Badge({ label, color, bg }) {
   return <span style={{ background: bg, color, fontSize: 11, fontWeight: 600, padding: "2px 10px", borderRadius: 50 }}>{label}</span>
 }
 
-function PlanBadge({ sub }) {
-  if (!sub) return <Badge label="Нет" color={T.muted} bg={T.bg} />
-  const days = daysLeft(sub.expires_at)
-  if (days === null || days <= 0) return <Badge label="Истекла" color={T.red} bg={T.redBg} />
-  if (sub.granted_by_admin) return <Badge label={`🎁 ${days} дн.`} color={T.blue} bg={T.blueBg} />
-  return <Badge label={`Pro · ${days} дн.`} color={T.green} bg={T.greenBg} />
+function PlanBadge({ sub, user }) {
+  const now = new Date()
+  // Активная подписка
+  if (sub) {
+    const days = daysLeft(sub.expires_at)
+    if (days !== null && days > 0) {
+      if (sub.granted_by_admin) return <Badge label={`🎁 ${days} дн.`} color={T.blue} bg={T.blueBg} />
+      return <Badge label={`Pro · ${days} дн.`} color={T.green} bg={T.greenBg} />
+    }
+  }
+  // Триал
+  if (user?.trial_ends_at && new Date(user.trial_ends_at) > now) {
+    const days = daysLeft(user.trial_ends_at)
+    return <Badge label={`Триал · ${days} дн.`} color={T.accent} bg={T.accentBg} />
+  }
+  // Ничего нет
+  if (sub) return <Badge label="Истекла" color={T.red} bg={T.redBg} />
+  return <Badge label="Нет доступа" color={T.red} bg={T.redBg} />
 }
 
 // ── Dashboard Tab ────────────────────────────────────────────────
@@ -63,8 +75,9 @@ function DashboardTab({ data }) {
     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 }}>
       <StatCard label="Всего пользователей" value={stats.totalUsers} color={T.text} />
       <StatCard label="Новых за неделю" value={stats.newUsersThisWeek} color={T.blue} />
-      <StatCard label="Сканирований" value={stats.scansThisMonth} sub="в этом месяце" color={T.accent} />
+      <StatCard label="На триале" value={stats.trialUsers ?? "—"} sub="активных" color={T.accent} />
       <StatCard label="Pro подписок" value={stats.proUsers} sub="активных" color={T.green} />
+      <StatCard label="Сканирований" value={stats.scansThisMonth} sub="в этом месяце" color={T.muted} />
     </div>
     <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 16, padding: "16px 20px" }}>
       <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".12em", color: T.muted, textTransform: "uppercase", marginBottom: 12 }}>Последние регистрации</div>
@@ -124,7 +137,7 @@ function UsersTab({ data, secret, onRefresh }) {
             <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>{u.username ? `@${u.username} · ` : ""}{u.telegram_id}</div>
           </div>
           <div style={{ textAlign: "right" }}>
-            <PlanBadge sub={sub} />
+            <PlanBadge sub={sub} user={u} />
             <div style={{ fontSize: 10, color: T.faint, marginTop: 4 }}>{fmtDate(u.created_at)}</div>
           </div>
         </div>
@@ -145,8 +158,9 @@ function UsersTab({ data, secret, onRefresh }) {
       </div>
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".1em", color: T.muted, textTransform: "uppercase", marginBottom: 8 }}>Подписка</div>
-        <PlanBadge sub={getSubForUser(selected.telegram_id)} />
-        {getSubForUser(selected.telegram_id)?.expires_at && <div style={{ fontSize: 11, color: T.muted, marginTop: 6 }}>Истекает: {fmtDate(getSubForUser(selected.telegram_id).expires_at)}</div>}
+        <PlanBadge sub={getSubForUser(selected.telegram_id)} user={selected} />
+        {getSubForUser(selected.telegram_id)?.expires_at && <div style={{ fontSize: 11, color: T.muted, marginTop: 6 }}>Подписка до: {fmtDate(getSubForUser(selected.telegram_id).expires_at)}</div>}
+        {selected.trial_ends_at && <div style={{ fontSize: 11, color: T.muted, marginTop: 4 }}>Триал до: {fmtDate(selected.trial_ends_at)}</div>}
       </div>
       <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: 16 }}>
         <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".1em", color: T.muted, textTransform: "uppercase", marginBottom: 10 }}>Выдать доступ</div>
