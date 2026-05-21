@@ -402,12 +402,90 @@ function SupportTab({ secret, adminData }) {
   </div>
 }
 
+// ── Referrals Tab ────────────────────────────────────────────────
+function ReferralsTab({ secret }) {
+  const [refs, setRefs] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    api("/api/admin/referrals", {}, secret)
+      .then(d => { setRefs(Array.isArray(d) ? d : []); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [])
+
+  // Группируем по рефереру
+  const byReferrer = {}
+  refs.forEach(r => {
+    if (!byReferrer[r.referrer_id]) byReferrer[r.referrer_id] = { referrer_id: r.referrer_id, referrer_name: r.referrer_name, total: 0, paid: 0, bonus_days: 0 }
+    byReferrer[r.referrer_id].total++
+    if (r.status === 'paid') byReferrer[r.referrer_id].paid++
+    byReferrer[r.referrer_id].bonus_days += r.bonus_days || 0
+  })
+  const top = Object.values(byReferrer).sort((a, b) => b.paid - a.paid || b.total - a.total)
+
+  return <div style={{ display: "grid", gap: 16 }}>
+    {/* Топ рефереров */}
+    <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 16, overflow: "hidden" }}>
+      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${T.border}`, fontSize: 11, fontWeight: 600, letterSpacing: ".12em", color: T.muted, textTransform: "uppercase" }}>
+        Топ рефереров · {top.length}
+      </div>
+      {loading && <div style={{ padding: 30, textAlign: "center", color: T.faint, fontSize: 13 }}>Загрузка…</div>}
+      {!loading && !top.length && <div style={{ padding: 30, textAlign: "center", color: T.faint, fontSize: 13 }}>Рефералов пока нет</div>}
+      {top.map((r, i) => (
+        <div key={r.referrer_id} style={{ display: "grid", gridTemplateColumns: "32px 1fr auto auto auto", gap: 12, padding: "12px 20px", borderBottom: i < top.length - 1 ? `1px solid ${T.border}` : "none", alignItems: "center", fontSize: 13 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: T.faint, textAlign: "center" }}>#{i + 1}</div>
+          <div>
+            <div style={{ fontWeight: 500, color: T.text }}>{r.referrer_name || `ID ${r.referrer_id}`}</div>
+            <div style={{ fontSize: 11, color: T.faint }}>ID: {r.referrer_id}</div>
+          </div>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{r.total}</div>
+            <div style={{ fontSize: 10, color: T.faint }}>привёл</div>
+          </div>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: T.green }}>{r.paid}</div>
+            <div style={{ fontSize: 10, color: T.faint }}>оплатил</div>
+          </div>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: T.blue }}>{r.bonus_days}</div>
+            <div style={{ fontSize: 10, color: T.faint }}>бонус дн.</div>
+          </div>
+        </div>
+      ))}
+    </div>
+
+    {/* Все рефералы */}
+    <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 16, overflow: "hidden" }}>
+      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${T.border}`, fontSize: 11, fontWeight: 600, letterSpacing: ".12em", color: T.muted, textTransform: "uppercase" }}>
+        Все рефералы · {refs.length}
+      </div>
+      {!loading && !refs.length && <div style={{ padding: 30, textAlign: "center", color: T.faint, fontSize: 13 }}>Пока никто не пришёл по ссылке</div>}
+      {refs.map((r, i) => (
+        <div key={r.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto auto", gap: 12, padding: "10px 20px", borderBottom: i < refs.length - 1 ? `1px solid ${T.border}` : "none", alignItems: "center", fontSize: 13 }}>
+          <div>
+            <div style={{ fontWeight: 500, color: T.text }}>{r.referee_name || `ID ${r.referee_id}`}</div>
+            <div style={{ fontSize: 11, color: T.faint }}>пришёл от: {r.referrer_name || r.referrer_id}</div>
+          </div>
+          <div style={{ fontSize: 11, color: T.faint }}>{fmtDate(r.created_at)}</div>
+          <div>
+            {r.status === 'paid'
+              ? <Badge label="Оплатил" color={T.green} bg={T.greenBg} />
+              : <Badge label="Зарегистрирован" color={T.muted} bg={T.bg} />}
+          </div>
+          <div style={{ fontSize: 12, color: T.blue, fontWeight: 600 }}>{r.bonus_days > 0 ? `+${r.bonus_days} дн.` : "—"}</div>
+        </div>
+      ))}
+    </div>
+  </div>
+}
+
 // ── Main Admin ───────────────────────────────────────────────────
 const TABS = [
   { id: "dashboard", label: "Дашборд", ico: "📊" },
   { id: "users", label: "Пользователи", ico: "👥" },
   { id: "subscriptions", label: "Подписки", ico: "💳" },
   { id: "promo", label: "Промокоды", ico: "🎟️" },
+  { id: "referrals", label: "Рефералы", ico: "🔗" },
   { id: "support", label: "Поддержка", ico: "💬" },
 ]
 
@@ -484,6 +562,7 @@ export default function Admin() {
         {tab === "users" && <UsersTab data={data} secret={secret} onRefresh={() => load(secret)} />}
         {tab === "subscriptions" && <SubscriptionsTab data={data} />}
         {tab === "promo" && <PromoTab secret={secret} />}
+        {tab === "referrals" && <ReferralsTab secret={secret} />}
         {tab === "support" && <SupportTab secret={secret} adminData={data} />}
       </div>
     </div>
