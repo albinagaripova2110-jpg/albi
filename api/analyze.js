@@ -111,6 +111,23 @@ export default async function handler(req, res) {
     const imgPart = userContent.find(p => p.type === 'image')
     const textPart = userContent.find(p => p.type === 'text')
 
+    // Text-only mode (no image)
+    if (body.text_only || !imgPart) {
+      const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({ model: 'gpt-4o-mini', max_tokens: body.max_tokens || 1000,
+          messages: [{ role: 'user', content: textPart?.text || '' }] })
+      })
+      const data = await openaiRes.json()
+      if (!openaiRes.ok) return res.status(openaiRes.status).json({ error: data.error?.message || 'OpenAI error' })
+      const responseText = data.choices?.[0]?.message?.content || ''
+      if (supabaseUrl && supabaseKey && telegramId) {
+        try { const p=JSON.parse(responseText.replace(/```json\s*/g,'').replace(/```/g,'').trim()); await logScan(supabaseUrl,supabaseKey,telegramId,p?.total?.calories) } catch { await logScan(supabaseUrl,supabaseKey,telegramId,null) }
+      }
+      return res.status(200).json({ content: [{ type: 'text', text: responseText }] })
+    }
+
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
