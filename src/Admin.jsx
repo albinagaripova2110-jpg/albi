@@ -290,27 +290,29 @@ function SupportTab({ secret, adminData }) {
   const [reply, setReply] = useState("")
   const [sending, setSending] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [msgsLoading, setMsgsLoading] = useState(false)
   const msgEndRef = useRef(null)
 
   const loadDialogs = async () => {
-    const data = await api("/api/admin/support", {}, secret)
+    const data = await api("/api/admin/support", {}, secret).catch(() => [])
     setDialogs(Array.isArray(data) ? data : [])
     setLoading(false)
   }
   const loadMessages = async (tid) => {
-    const data = await api(`/api/admin/support?telegram_id=${tid}`, {}, secret)
-    setMessages(Array.isArray(data) ? data : [])
+    setMsgsLoading(true)
+    const data = await api(`/api/admin/support?telegram_id=${tid}`, {}, secret).catch(() => null)
+    if (data !== null) setMessages(Array.isArray(data) ? data : [])
+    setMsgsLoading(false)
     setTimeout(() => msgEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100)
   }
 
   useEffect(() => { loadDialogs() }, [])
   useEffect(() => {
-    if (selectedUser) {
-      loadMessages(selectedUser.telegram_id)
-      const iv = setInterval(() => loadMessages(selectedUser.telegram_id), 5000)
-      return () => clearInterval(iv)
-    }
-  }, [selectedUser])
+    if (!selectedUser) return
+    loadMessages(selectedUser.telegram_id)
+    const iv = setInterval(() => loadMessages(selectedUser.telegram_id), 5000)
+    return () => clearInterval(iv)
+  }, [selectedUser?.telegram_id])
 
   const sendReply = async () => {
     if (!reply.trim() || !selectedUser) return
@@ -335,7 +337,7 @@ function SupportTab({ secret, adminData }) {
         {!loading && !dialogs.length && <div style={{ padding: 20, textAlign: "center", color: T.faint, fontSize: 12 }}>Сообщений пока нет</div>}
         {dialogs.map(d => {
           const sel = selectedUser?.telegram_id === d.telegram_id
-          return <div key={d.telegram_id} onClick={() => { setSelectedUser(d); loadDialogs() }}
+          return <div key={d.telegram_id} onClick={() => { setSelectedUser(d); setMessages([]); loadMessages(d.telegram_id); loadDialogs() }}
             style={{ padding: "10px 16px", borderBottom: `1px solid ${T.border}`, cursor: "pointer", background: sel ? T.accentBg : "transparent", transition: "background .15s" }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
               <span style={{ fontSize: 13, fontWeight: d.unread ? 700 : 500, color: T.text }}>{d.user_name || "Пользователь"}</span>
@@ -360,6 +362,8 @@ function SupportTab({ secret, adminData }) {
             </div>
           </div>
           <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
+            {msgsLoading && !messages.length && <div style={{ textAlign: "center", color: T.faint, fontSize: 12, padding: 20 }}>Загрузка…</div>}
+            {!msgsLoading && !messages.length && <div style={{ textAlign: "center", color: T.faint, fontSize: 12, padding: 20 }}>Нет сообщений</div>}
             {messages.map((m, i) => (
               <div key={i} style={{ display: "flex", justifyContent: m.direction === "outbound" ? "flex-end" : "flex-start" }}>
                 <div style={{ maxWidth: "75%", padding: "10px 14px", borderRadius: m.direction === "outbound" ? "16px 16px 4px 16px" : "16px 16px 16px 4px", background: m.direction === "outbound" ? T.accent : T.bg, color: m.direction === "outbound" ? "#fff" : T.text, fontSize: 13, lineHeight: 1.5 }}>
