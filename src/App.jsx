@@ -767,7 +767,12 @@ function Profile({ profile, norms, onSave, onReset }) {
 }
 
 // ─── Sync ──────────────────────────────────────────────────────────
-const getTgId=()=>window.Telegram?.WebApp?.initDataUnsafe?.user?.id||null;
+const getTgId=()=>{
+  const live=window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+  if(live){localStorage.setItem("albi_tgid",String(live));return live;}
+  const cached=localStorage.getItem("albi_tgid");
+  return cached?Number(cached):null;
+};
 
 async function syncLoad(tgId){
   try{
