@@ -931,10 +931,19 @@ function Profile({ profile, norms, onSave, onReset, access, tgId }) {
     if(!refLink) return;
     navigator.clipboard.writeText(refLink).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2000);}).catch(()=>{});
   };
-  const openBot = () => {
-    const url = "https://t.me/AlbiScan_bot";
-    if(window.Telegram?.WebApp?.openTelegramLink) window.Telegram.WebApp.openTelegramLink(url);
-    else window.open(url,"_blank");
+  const [payLoading,setPayLoading]=useState(false);
+  const openPayment = async (plan="quarterly") => {
+    if(!tgId){ window.open("https://t.me/AlbiScan_bot","_blank"); return; }
+    setPayLoading(true);
+    try{
+      const r=await fetch("/api/payment/create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({telegram_id:tgId,plan})});
+      const d=await r.json();
+      if(d.url){
+        if(window.Telegram?.WebApp?.openLink) window.Telegram.WebApp.openLink(d.url);
+        else window.open(d.url,"_blank");
+      }
+    }catch{}
+    setPayLoading(false);
   };
 
   const now = new Date();
@@ -962,8 +971,8 @@ function Profile({ profile, norms, onSave, onReset, access, tgId }) {
             <div style={{fontSize:12,color:T.muted,marginTop:2}}>Оформи подписку для продолжения</div>
           </>}
         </div>
-        <button onClick={openBot} style={{background:T.accent,color:"#fff",border:"none",padding:"8px 18px",borderRadius:50,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"Manrope",flexShrink:0}}>
-          {plan==="pro"?"Продлить":"Оформить"}
+        <button onClick={()=>openPayment("quarterly")} disabled={payLoading} style={{background:T.accent,color:"#fff",border:"none",padding:"8px 18px",borderRadius:50,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"Manrope",flexShrink:0,opacity:payLoading?.7:1}}>
+          {payLoading?"…":plan==="pro"?"Продлить":"Оформить"}
         </button>
       </div>
 
@@ -1084,17 +1093,31 @@ function syncSave(tgId,data){
 }
 
 // ─── Paywall ───────────────────────────────────────────────────────
-function Paywall() {
+function Paywall({ tgId }) {
   const [sel,setSel]=useState("quarterly");
+  const [loading,setLoading]=useState(false);
+  const [discount,setDiscount]=useState(false);
   const plans=[
-    {id:"monthly",  label:"1 месяц",  price:"249 ₽", sub:"249 ₽/мес",  badge:null,  },
-    {id:"quarterly",label:"3 месяца", price:"599 ₽", sub:"200 ₽/мес",  badge:"−20%",},
-    {id:"yearly",   label:"1 год",    price:"1990 ₽",sub:"166 ₽/мес",  badge:"−33%",},
+    {id:"monthly",  label:"1 месяц",  price:249,  priceStr:"249 ₽", sub:"249 ₽/мес",  badge:null,  },
+    {id:"quarterly",label:"3 месяца", price:599,  priceStr:"599 ₽", sub:"200 ₽/мес",  badge:"−20%",},
+    {id:"yearly",   label:"1 год",    price:1990, priceStr:"1990 ₽",sub:"166 ₽/мес",  badge:"−33%",},
   ];
-  const openBot=()=>{
-    const url="https://t.me/AlbiScan_bot";
-    if(window.Telegram?.WebApp?.openTelegramLink) window.Telegram.WebApp.openTelegramLink(url);
-    else window.open(url,"_blank");
+
+  const pay=async()=>{
+    if(!tgId){
+      window.open("https://t.me/AlbiScan_bot","_blank"); return;
+    }
+    setLoading(true);
+    try{
+      const r=await fetch("/api/payment/create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({telegram_id:tgId,plan:sel})});
+      const d=await r.json();
+      if(d.url){
+        setDiscount(d.has_discount);
+        if(window.Telegram?.WebApp?.openLink) window.Telegram.WebApp.openLink(d.url);
+        else window.open(d.url,"_blank");
+      }
+    }catch(e){console.error(e);}
+    setLoading(false);
   };
   return <div style={{minHeight:"100vh",background:T.bg,fontFamily:"'Manrope',sans-serif",display:"flex",flexDirection:"column",alignItems:"center",padding:"48px 20px 40px"}}>
     <style>{CSS}</style>
@@ -1127,17 +1150,22 @@ function Paywall() {
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               {p.badge&&<span style={{background:T.greenBg,color:T.green,fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:50}}>{p.badge}</span>}
-              <div style={{fontSize:16,fontWeight:700,color:sel===p.id?T.accent:T.text}}>{p.price}</div>
+              <div style={{textAlign:"right"}}>
+                {discount&&sel===p.id&&<div style={{fontSize:10,color:T.faint,textDecoration:"line-through"}}>{p.priceStr}</div>}
+                <div style={{fontSize:16,fontWeight:700,color:sel===p.id?T.accent:T.text}}>
+                  {discount&&sel===p.id?`${Math.round(p.price*0.9)} ₽`:p.priceStr}
+                </div>
+              </div>
             </div>
           </div>
         ))}
       </div>
 
-      <button onClick={openBot} style={{width:"100%",background:T.accent,color:"#fff",border:"none",padding:"15px",borderRadius:50,fontSize:15,fontWeight:600,cursor:"pointer",fontFamily:"Manrope",marginBottom:10}}>
-        Написать нам →
+      <button onClick={pay} disabled={loading} style={{width:"100%",background:T.accent,color:"#fff",border:"none",padding:"15px",borderRadius:50,fontSize:15,fontWeight:600,cursor:"pointer",fontFamily:"Manrope",marginBottom:10,opacity:loading?.7:1}}>
+        {loading?"Создаём платёж…":"Оформить подписку →"}
       </button>
       <div style={{textAlign:"center",fontSize:11,color:T.faint,lineHeight:1.5}}>
-        Напиши в бот — мы активируем доступ вручную.<br/>Оплата картой появится совсем скоро 💳
+        Оплата картой через защищённую форму Продамус 🔒
       </div>
     </div>
   </div>
@@ -1214,7 +1242,7 @@ export default function App() {
   if(!profile) return <Onboarding onDone={p=>setProfile(p)}/>;
 
   // Показываем paywall только если точно знаем что доступ закончился
-  if(access&&!access.allowed) return <Paywall/>;
+  if(access&&!access.allowed) return <Paywall tgId={tgId}/>;
 
   return <div style={{minHeight:"100vh",background:T.bg,fontFamily:"'Manrope',sans-serif",paddingBottom:90,overflowX:"hidden",width:"100%"}}>
     <style>{CSS}</style>
