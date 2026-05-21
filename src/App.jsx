@@ -397,14 +397,9 @@ function Today({ profile, norms, day, setDay, selectedDate, onSelectDate, histor
     setEditMeal(m=>({...m,dishes,total}));
   };
 
-  const isToday = selectedDate===todayKey();
-  const selDateObj = new Date(selectedDate+"T00:00:00");
-  const selLabel = isToday?"Сегодня":selDateObj.toLocaleDateString("ru",{weekday:"long",day:"numeric",month:"long"});
   const fit = eaten>0 && eaten<=norms.target;
 
   return <div>
-    {/* Week strip */}
-    <WeekStrip selectedDate={selectedDate} onSelect={onSelectDate} history={history}/>
 
     {/* Header */}
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
@@ -412,7 +407,7 @@ function Today({ profile, norms, day, setDay, selectedDate, onSelectDate, histor
         <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:300,color:T.text,lineHeight:1.1}}>
           {profile.name}<span style={{color:T.accent}}>·</span>
         </div>
-        <div style={{fontSize:12,color:T.muted,marginTop:4}}>{selLabel}</div>
+        <div style={{fontSize:12,color:T.muted,marginTop:4}}>{new Date().toLocaleDateString("ru",{weekday:"long",day:"numeric",month:"long"})}</div>
       </div>
       <div style={{textAlign:"right",display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
         {fit&&<div style={{background:T.greenBg,color:T.green,fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:50}}>🏆 Fit!</div>}
@@ -495,7 +490,7 @@ function Today({ profile, norms, day, setDay, selectedDate, onSelectDate, histor
     </div>}
 
     {/* Add food */}
-    {isToday&&<Card>
+    <Card>
       <SectionLabel>Добавить еду</SectionLabel>
       {!img&&!preview&&!manualMode&&!textMode&&<div>
         <div className="zone" onClick={()=>fileRef.current.click()}>
@@ -640,12 +635,89 @@ function Today({ profile, norms, day, setDay, selectedDate, onSelectDate, histor
           <button className="ghost-btn" style={{width:"100%"}} onClick={()=>{setPreview(null);setTextMode(false);}}>Отмена</button>
         </div>
       </div>}
-    </Card>}
-    {!isToday&&<div style={{textAlign:"center",padding:"20px 0",color:T.faint,fontSize:12}}>Добавление еды доступно только для сегодняшнего дня</div>}
+    </Card>
   </div>;
 }
 
 // ─── History ───────────────────────────────────────────────────────
+const MONTHS_RU=["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
+const WDAYS=["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+
+function MonthCalendar({ history, norms }) {
+  const now=new Date();
+  const [year,setYear]=useState(now.getFullYear());
+  const [month,setMonth]=useState(now.getMonth());
+  const [selectedDay,setSelectedDay]=useState(null);
+
+  const firstDay=new Date(year,month,1);
+  const lastDay=new Date(year,month+1,0);
+  const startDow=(firstDay.getDay()+6)%7; // 0=Mon
+  const totalDays=lastDay.getDate();
+
+  const cells=[];
+  for(let i=0;i<startDow;i++) cells.push(null);
+  for(let d=1;d<=totalDays;d++) cells.push(d);
+
+  const getKey=(d)=>`${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+  const getCal=(d)=>{
+    const day=history[getKey(d)];
+    return day?(day.meals||[]).reduce((s,m)=>s+m.total.calories,0):0;
+  };
+  const todayD=now.getDate(), todayM=now.getMonth(), todayY=now.getFullYear();
+  const isToday=(d)=>d===todayD&&month===todayM&&year===todayY;
+
+  const selData=selectedDay?history[getKey(selectedDay)]:null;
+  const selMeals=selData?.meals||[];
+  const selCal=selMeals.reduce((s,m)=>s+m.total.calories,0);
+
+  return <Card>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+      <button onClick={()=>{if(month===0){setMonth(11);setYear(y=>y-1);}else setMonth(m=>m-1);setSelectedDay(null);}}
+        style={{background:"none",border:"none",fontSize:18,cursor:"pointer",color:T.muted,padding:"4px 8px"}}>‹</button>
+      <div style={{fontSize:14,fontWeight:600,color:T.text}}>{MONTHS_RU[month]} {year}</div>
+      <button onClick={()=>{if(month===11){setMonth(0);setYear(y=>y+1);}else setMonth(m=>m+1);setSelectedDay(null);}}
+        disabled={year===todayY&&month===todayM}
+        style={{background:"none",border:"none",fontSize:18,cursor:"pointer",color:year===todayY&&month===todayM?T.faint:T.muted,padding:"4px 8px"}}>›</button>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:8}}>
+      {WDAYS.map(d=><div key={d} style={{textAlign:"center",fontSize:9,fontWeight:600,color:T.faint,letterSpacing:".06em",padding:"4px 0"}}>{d}</div>)}
+      {cells.map((d,i)=>{
+        if(!d) return <div key={`e${i}`}/>;
+        const cal=getCal(d);
+        const hasMeals=cal>0;
+        const over=cal>norms.target;
+        const sel=selectedDay===d;
+        return <div key={d} onClick={()=>setSelectedDay(sel?null:d)}
+          style={{textAlign:"center",padding:"6px 2px",borderRadius:10,cursor:"pointer",background:sel?T.accent:isToday(d)?T.accentBg:"transparent",transition:"all .2s"}}>
+          <div style={{fontSize:12,fontWeight:isToday(d)||sel?700:400,color:sel?"#fff":isToday(d)?T.accent:T.text}}>{d}</div>
+          <div style={{width:4,height:4,borderRadius:"50%",margin:"2px auto 0",background:hasMeals?(sel?"rgba(255,255,255,.8)":over?"#e05a4a":T.green):"transparent"}}/>
+        </div>;
+      })}
+    </div>
+    {selectedDay&&<div style={{borderTop:`1px solid ${T.border}`,paddingTop:12,marginTop:4}}>
+      {selMeals.length===0
+        ?<div style={{textAlign:"center",padding:"12px 0",color:T.faint,fontSize:12}}>Нет записей за этот день</div>
+        :<>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+            <span style={{fontSize:12,fontWeight:600,color:T.text}}>{String(selectedDay).padStart(2,"0")}.{String(month+1).padStart(2,"0")}</span>
+            <span style={{fontSize:12,fontWeight:700,color:selCal>norms.target?"#e05a4a":T.accent}}>{selCal} ккал</span>
+          </div>
+          {selMeals.map((m,mi)=>(
+            <div key={mi} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0",borderBottom:`1px solid ${T.border}`}}>
+              {m.img?<img src={m.img} style={{width:36,height:36,borderRadius:8,objectFit:"cover",flexShrink:0}}/>
+                :<div style={{width:36,height:36,borderRadius:8,background:T.accentBg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>🍽</div>}
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12,fontWeight:500,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.dishes.map(d=>d.name).join(", ")}</div>
+                <div style={{fontSize:10,color:T.muted,marginTop:2}}>{m.time} · Б{m.total.protein} Ж{m.total.fat} У{m.total.carbs}</div>
+              </div>
+              <span style={{fontSize:12,fontWeight:600,color:T.accent,flexShrink:0}}>{m.total.calories}</span>
+            </div>
+          ))}
+        </>}
+    </div>}
+  </Card>;
+}
+
 function History({ history, norms }) {
   const [histExpanded,setHistExpanded]=useState({});
   const sorted=Object.entries(history).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,30);
@@ -661,6 +733,7 @@ function History({ history, norms }) {
   const CustomTooltip=({active,payload,label})=>active&&payload?.length?<div style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 14px",fontSize:12,color:T.text,fontWeight:600}}>{label}: {payload[0].value} ккал</div>:null;
   return <div>
     <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:300,color:T.text,marginBottom:24}}>История</div>
+    <MonthCalendar history={history} norms={norms}/>
     <Card>
       <SectionLabel>Калории за 14 дней</SectionLabel>
       <ResponsiveContainer width="100%" height={160}>
