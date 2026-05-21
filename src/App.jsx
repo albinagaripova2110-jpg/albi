@@ -932,7 +932,14 @@ function Profile({ profile, norms, onSave, onReset, access, tgId }) {
     navigator.clipboard.writeText(refLink).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2000);}).catch(()=>{});
   };
   const [payLoading,setPayLoading]=useState(false);
-  const openPayment = async (plan="quarterly") => {
+  const [showPlans,setShowPlans]=useState(false);
+  const [selPlan,setSelPlan]=useState("quarterly");
+  const profilePlans=[
+    {id:"monthly",  label:"1 месяц",  price:"249 ₽", sub:"249 ₽/мес", badge:null},
+    {id:"quarterly",label:"3 месяца", price:"599 ₽", sub:"200 ₽/мес", badge:"−20%"},
+    {id:"yearly",   label:"1 год",    price:"1990 ₽",sub:"166 ₽/мес", badge:"−33%"},
+  ];
+  const openPayment = async (plan) => {
     if(!tgId){ window.open("https://t.me/AlbiScan_bot","_blank"); return; }
     setPayLoading(true);
     try{
@@ -971,10 +978,37 @@ function Profile({ profile, norms, onSave, onReset, access, tgId }) {
             <div style={{fontSize:12,color:T.muted,marginTop:2}}>Оформи подписку для продолжения</div>
           </>}
         </div>
-        <button onClick={()=>openPayment("quarterly")} disabled={payLoading} style={{background:T.accent,color:"#fff",border:"none",padding:"8px 18px",borderRadius:50,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"Manrope",flexShrink:0,opacity:payLoading?.7:1}}>
-          {payLoading?"…":plan==="pro"?"Продлить":"Оформить"}
+        <button onClick={()=>setShowPlans(v=>!v)} style={{background:T.accent,color:"#fff",border:"none",padding:"8px 18px",borderRadius:50,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"Manrope",flexShrink:0}}>
+          {plan==="pro"?"Продлить":"Оформить"}
         </button>
       </div>
+
+      {/* Plan selector */}
+      {showPlans&&<div style={{marginTop:12}}>
+        <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:10}}>
+          {profilePlans.map(p=>(
+            <div key={p.id} onClick={()=>setSelPlan(p.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 14px",borderRadius:12,border:`2px solid ${selPlan===p.id?T.accent:T.border}`,background:selPlan===p.id?T.accentBg:T.bg,cursor:"pointer",transition:"all .2s"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{width:16,height:16,borderRadius:"50%",border:`2px solid ${selPlan===p.id?T.accent:T.borderMd}`,background:selPlan===p.id?T.accent:"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  {selPlan===p.id&&<div style={{width:6,height:6,borderRadius:"50%",background:"#fff"}}/>}
+                </div>
+                <div>
+                  <span style={{fontSize:13,fontWeight:600,color:T.text}}>{p.label}</span>
+                  <span style={{fontSize:11,color:T.muted,marginLeft:6}}>{p.sub}</span>
+                </div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                {p.badge&&<span style={{background:T.greenBg,color:T.green,fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:50}}>{p.badge}</span>}
+                <span style={{fontSize:14,fontWeight:700,color:selPlan===p.id?T.accent:T.text}}>{p.price}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <button onClick={()=>{openPayment(selPlan);setShowPlans(false);}} disabled={payLoading}
+          style={{width:"100%",background:T.accent,color:"#fff",border:"none",padding:"12px",borderRadius:50,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"Manrope",opacity:payLoading?.7:1}}>
+          {payLoading?"Создаём платёж…":"Перейти к оплате →"}
+        </button>
+      </div>}
 
       {/* Referral */}
       {refLink&&<>
