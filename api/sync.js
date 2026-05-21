@@ -54,10 +54,13 @@ export default async function handler(req, res) {
     )
     const hasSubscription = Array.isArray(subs) && subs.length > 0
 
+    const subEndsAt = hasSubscription ? subs[0].expires_at : null
+
     const access = {
       allowed: trialActive || hasSubscription,
       plan: hasSubscription ? 'pro' : trialActive ? 'trial' : 'expired',
       trialEndsAt: trialEndsAt || null,
+      subEndsAt: subEndsAt || null,
     }
 
     if (Array.isArray(data) && data.length > 0) {
