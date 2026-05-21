@@ -25,7 +25,7 @@ export default async function handler(req, res) {
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY
 
   const data = await supabase(
-    'subscriptions?order=created_at.desc&limit=500',
+    'subscriptions?order=expires_at.desc&limit=500',
     supabaseUrl, supabaseKey, { method: 'GET' }
   )
 
