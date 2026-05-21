@@ -43,10 +43,10 @@ export default async function handler(req, res) {
 
   // POST — сохранить данные
   if (req.method === 'POST') {
-    const { telegram_id, profile, history, weights, reminders } = req.body
+    const { telegram_id, tg_name, tg_username, profile, history, weights, reminders } = req.body
     if (!telegram_id) return res.status(400).json({ error: 'telegram_id required' })
 
-    // Убедимся что пользователь существует в таблице users
+    // Убедимся что пользователь существует в таблице users (с именем и username)
     await supabaseRequest(
       `${supabaseUrl}/rest/v1/users`,
       {
@@ -54,7 +54,8 @@ export default async function handler(req, res) {
         headers: { 'Prefer': 'resolution=merge-duplicates' },
         body: JSON.stringify({
           telegram_id,
-          name: profile?.name || null,
+          name: tg_name || profile?.name || null,
+          username: tg_username || null,
           last_seen_at: new Date().toISOString(),
         })
       },
