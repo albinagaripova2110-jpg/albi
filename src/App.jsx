@@ -392,8 +392,29 @@ function Today({ profile, norms, day, setDay, selectedDate, onSelectDate, histor
     setDay(d=>({...d,meals:updated}));setEditIdx(null);setEditMeal(null);
   };
   const setED=(di,field,val)=>{
-    const dishes=editMeal.dishes.map((d,i)=>i===di?{...d,[field]:field==="weight"?val:+val}:d);
-    const total={calories:dishes.reduce((s,d)=>s+d.calories,0),protein:dishes.reduce((s,d)=>s+d.protein,0),fat:dishes.reduce((s,d)=>s+d.fat,0),carbs:dishes.reduce((s,d)=>s+d.carbs,0)};
+    const dishes=editMeal.dishes.map((d,i)=>{
+      if(i!==di) return d;
+      if(field==="weight"){
+        const newW=parseFloat(val)||0;
+        const oldW=parseFloat(d.weight)||0;
+        if(oldW>0&&newW>0&&newW!==oldW){
+          const r=newW/oldW;
+          return {...d,weight:val,
+            calories:Math.round(d.calories*r),
+            protein:Math.round(d.protein*r*10)/10,
+            fat:Math.round(d.fat*r*10)/10,
+            carbs:Math.max(0,Math.round(d.carbs*r*10)/10)};
+        }
+        return {...d,weight:val};
+      }
+      return {...d,[field]:Math.max(0,+val)};
+    });
+    const total={
+      calories:dishes.reduce((s,d)=>s+(d.calories||0),0),
+      protein:dishes.reduce((s,d)=>s+(d.protein||0),0),
+      fat:dishes.reduce((s,d)=>s+(d.fat||0),0),
+      carbs:Math.max(0,dishes.reduce((s,d)=>s+(d.carbs||0),0))
+    };
     setEditMeal(m=>({...m,dishes,total}));
   };
 
@@ -410,7 +431,6 @@ function Today({ profile, norms, day, setDay, selectedDate, onSelectDate, histor
         <div style={{fontSize:12,color:T.muted,marginTop:4}}>{new Date().toLocaleDateString("ru",{weekday:"long",day:"numeric",month:"long"})}</div>
       </div>
       <div style={{textAlign:"right",display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
-        {fit&&<div style={{background:T.greenBg,color:T.green,fontSize:11,fontWeight:700,padding:"3px 10px",borderRadius:50}}>🏆 Fit!</div>}
         <div style={{fontSize:11,color:rem>=0?T.green:"#e05a4a",fontWeight:600}}>
           {rem>=0?`↓ ${rem} ккал осталось`:`↑ ${Math.abs(rem)} перебор`}
         </div>
