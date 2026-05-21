@@ -1009,6 +1009,66 @@ function syncSave(tgId,data){
   },2000);
 }
 
+// ─── Paywall ───────────────────────────────────────────────────────
+function Paywall() {
+  const [sel,setSel]=useState("quarterly");
+  const plans=[
+    {id:"monthly",  label:"1 месяц",  price:"249 ₽", sub:"249 ₽/мес",  badge:null,  },
+    {id:"quarterly",label:"3 месяца", price:"599 ₽", sub:"200 ₽/мес",  badge:"−20%",},
+    {id:"yearly",   label:"1 год",    price:"1990 ₽",sub:"166 ₽/мес",  badge:"−33%",},
+  ];
+  const openBot=()=>{
+    const url="https://t.me/AlbiScan_bot";
+    if(window.Telegram?.WebApp?.openTelegramLink) window.Telegram.WebApp.openTelegramLink(url);
+    else window.open(url,"_blank");
+  };
+  return <div style={{minHeight:"100vh",background:T.bg,fontFamily:"'Manrope',sans-serif",display:"flex",flexDirection:"column",alignItems:"center",padding:"48px 20px 40px"}}>
+    <style>{CSS}</style>
+    <div style={{maxWidth:400,width:"100%"}}>
+      <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:38,fontWeight:300,color:T.text,textAlign:"center",marginBottom:6}}>
+        Albi<span style={{color:T.accent}}>·</span>
+      </div>
+      <div style={{textAlign:"center",marginBottom:28}}>
+        <div style={{fontSize:19,fontWeight:700,color:T.text,marginBottom:8}}>Пробный период закончился</div>
+        <div style={{fontSize:13,color:T.muted,lineHeight:1.65}}>Подпишись, чтобы продолжить отслеживать питание и получать ИИ-анализ блюд</div>
+      </div>
+
+      <div style={{background:T.surface,borderRadius:16,padding:"14px 18px",marginBottom:22,border:`1px solid ${T.border}`}}>
+        {["📸 Анализ фото блюд без ограничений","📊 История питания и динамика веса","🎯 Персональные нормы КБЖУ","🔄 Синхронизация на всех устройствах"].map(b=>(
+          <div key={b} style={{padding:"7px 0",fontSize:13,color:T.text,borderBottom:`1px solid ${T.border}`,lastChild:{border:"none"}}}>{b}</div>
+        ))}
+      </div>
+
+      <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
+        {plans.map(p=>(
+          <div key={p.id} onClick={()=>setSel(p.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"13px 16px",borderRadius:14,border:`2px solid ${sel===p.id?T.accent:T.border}`,background:sel===p.id?T.accentBg:T.surface,cursor:"pointer",transition:"all .2s"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{width:18,height:18,borderRadius:"50%",border:`2px solid ${sel===p.id?T.accent:T.borderMd}`,background:sel===p.id?T.accent:"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                {sel===p.id&&<div style={{width:7,height:7,borderRadius:"50%",background:"#fff"}}/>}
+              </div>
+              <div>
+                <div style={{fontSize:14,fontWeight:600,color:T.text}}>{p.label}</div>
+                <div style={{fontSize:11,color:T.muted}}>{p.sub}</div>
+              </div>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              {p.badge&&<span style={{background:T.greenBg,color:T.green,fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:50}}>{p.badge}</span>}
+              <div style={{fontSize:16,fontWeight:700,color:sel===p.id?T.accent:T.text}}>{p.price}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <button onClick={openBot} style={{width:"100%",background:T.accent,color:"#fff",border:"none",padding:"15px",borderRadius:50,fontSize:15,fontWeight:600,cursor:"pointer",fontFamily:"Manrope",marginBottom:10}}>
+        Написать нам →
+      </button>
+      <div style={{textAlign:"center",fontSize:11,color:T.faint,lineHeight:1.5}}>
+        Напиши в бот — мы активируем доступ вручную.<br/>Оплата картой появится совсем скоро 💳
+      </div>
+    </div>
+  </div>
+}
+
 // ─── Root ──────────────────────────────────────────────────────────
 const TABS=[{id:"today",ico:"🍽",l:"Сегодня"},{id:"history",ico:"📊",l:"История"},{id:"weight",ico:"⚖",l:"Вес"},{id:"profile",ico:"◎",l:"Профиль"}];
 
@@ -1019,6 +1079,7 @@ export default function App() {
   const [weights,setWeights]=useState([]);
   const [reminders,setReminders]=useState([]);
   const [tab,setTab]=useState("today");
+  const [access,setAccess]=useState(null); // null=загрузка, {allowed,plan}
 
   useEffect(()=>{(async()=>{
     try{
@@ -1033,15 +1094,23 @@ export default function App() {
           if(cloud.history)setHistory(cloud.history);
           if(cloud.weights)setWeights(cloud.weights);
           if(cloud.reminders)setReminders(cloud.reminders);
+          // Статус доступа из ответа сервера
+          if(cloud.access) setAccess(cloud.access);
+          else setAccess({allowed:true,plan:"unknown"});
           setReady(true);
           return;
         }
+        // Пользователь есть в tg но данных нет — новый, триал будет после первого sync POST
+        setAccess({allowed:true,plan:"trial"});
+      } else {
+        // Нет tgId — не блокируем (десктоп/браузер)
+        setAccess({allowed:true,plan:"unknown"});
       }
 
       // Fallback — локальное хранилище
       const [p,h,w,r]=await Promise.all([load("albi_profile"),load("albi_history"),load("albi_weights"),load("albi_reminders")]);
       if(p)setProfile(p); if(h)setHistory(h); if(w)setWeights(w); if(r)setReminders(r);
-    }catch(e){console.log(e);}
+    }catch(e){console.log(e);setAccess({allowed:true,plan:"unknown"});}
     setReady(true);
   })();},[]);
 
@@ -1068,6 +1137,9 @@ export default function App() {
   </div>;
 
   if(!profile) return <Onboarding onDone={p=>setProfile(p)}/>;
+
+  // Показываем paywall только если точно знаем что доступ закончился
+  if(access&&!access.allowed) return <Paywall/>;
 
   return <div style={{minHeight:"100vh",background:T.bg,fontFamily:"'Manrope',sans-serif",paddingBottom:90,overflowX:"hidden",width:"100%"}}>
     <style>{CSS}</style>
