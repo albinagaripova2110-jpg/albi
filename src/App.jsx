@@ -766,6 +766,27 @@ function Profile({ profile, norms, onSave, onReset }) {
   </div>;
 }
 
+// ─── Sync ──────────────────────────────────────────────────────────
+const getTgId=()=>window.Telegram?.WebApp?.initDataUnsafe?.user?.id||null;
+
+async function syncLoad(tgId){
+  try{
+    const r=await fetch(`/api/sync?telegram_id=${tgId}`);
+    if(r.ok) return await r.json();
+  }catch{}
+  return null;
+}
+
+let syncTimer=null;
+function syncSave(tgId,data){
+  if(!tgId)return;
+  clearTimeout(syncTimer);
+  syncTimer=setTimeout(async()=>{
+    try{await fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({telegram_id:tgId,...data})});}
+    catch{}
+  },2000);
+}
+
 // ─── Root ──────────────────────────────────────────────────────────
 const TABS=[{id:"today",ico:"🍽",l:"Сегодня"},{id:"history",ico:"📊",l:"История"},{id:"weight",ico:"⚖",l:"Вес"},{id:"profile",ico:"◎",l:"Профиль"}];
 
@@ -780,6 +801,22 @@ export default function App() {
   useEffect(()=>{(async()=>{
     try{
       const load=async(k)=>{try{const r=await window.storage.get(k);return r?JSON.parse(r.value):null;}catch{return null;}};
+      const tgId=getTgId();
+
+      // Сначала пробуем загрузить из Supabase
+      if(tgId){
+        const cloud=await syncLoad(tgId);
+        if(cloud){
+          if(cloud.profile)setProfile(cloud.profile);
+          if(cloud.history)setHistory(cloud.history);
+          if(cloud.weights)setWeights(cloud.weights);
+          if(cloud.reminders)setReminders(cloud.reminders);
+          setReady(true);
+          return;
+        }
+      }
+
+      // Fallback — локальное хранилище
       const [p,h,w,r]=await Promise.all([load("albi_profile"),load("albi_history"),load("albi_weights"),load("albi_reminders")]);
       if(p)setProfile(p); if(h)setHistory(h); if(w)setWeights(w); if(r)setReminders(r);
     }catch(e){console.log(e);}
@@ -790,6 +827,13 @@ export default function App() {
   useEffect(()=>{if(ready)window.storage.set("albi_history",JSON.stringify(history)).catch(()=>{});},[history,ready]);
   useEffect(()=>{if(ready)window.storage.set("albi_weights",JSON.stringify(weights)).catch(()=>{});},[weights,ready]);
   useEffect(()=>{if(ready)window.storage.set("albi_reminders",JSON.stringify(reminders)).catch(()=>{});},[reminders,ready]);
+
+  // Синхронизация с Supabase при каждом изменении
+  useEffect(()=>{
+    if(!ready)return;
+    const tgId=getTgId();
+    syncSave(tgId,{profile,history,weights,reminders});
+  },[profile,history,weights,reminders,ready]);
 
   const today=history[todayKey()]||{meals:[],water:0};
   const setDay=(fn)=>setHistory(h=>({...h,[todayKey()]:typeof fn==="function"?fn(h[todayKey()]||{meals:[],water:0}):fn}));
