@@ -1,5 +1,3 @@
-const FREE_SCAN_LIMIT = 5
-
 async function supabaseRequest(url, options, supabaseKey) {
   const res = await fetch(url, {
     ...options,
@@ -15,7 +13,6 @@ async function supabaseRequest(url, options, supabaseKey) {
 
 async function trackUser(supabaseUrl, supabaseKey, telegramId, name, username) {
   if (!telegramId) return
-
   await supabaseRequest(
     `${supabaseUrl}/rest/v1/users`,
     {
@@ -32,42 +29,40 @@ async function trackUser(supabaseUrl, supabaseKey, telegramId, name, username) {
   )
 }
 
-async function checkScanLimit(supabaseUrl, supabaseKey, telegramId) {
+async function checkAccess(supabaseUrl, supabaseKey, telegramId) {
   if (!telegramId) return { allowed: true }
 
-  const [subData] = await supabaseRequest(
-    `${supabaseUrl}/rest/v1/subscriptions?user_id=eq.${telegramId}&select=plan,expires_at`,
+  const now = new Date().toISOString()
+
+  // Проверяем активную подписку
+  const subs = await supabaseRequest(
+    `${supabaseUrl}/rest/v1/subscriptions?user_id=eq.${telegramId}&plan=eq.pro&expires_at=gte.${now}&select=expires_at&limit=1`,
     { method: 'GET' },
     supabaseKey
-  )
-  const isPro = subData?.plan === 'pro' && subData?.expires_at && new Date(subData.expires_at) > new Date()
-  if (isPro) return { allowed: true, plan: 'pro' }
+  ).catch(() => [])
+  if (Array.isArray(subs) && subs.length > 0) return { allowed: true, plan: 'pro' }
 
-  const monthStart = new Date()
-  monthStart.setDate(1)
-  monthStart.setHours(0, 0, 0, 0)
-
-  const scansData = await supabaseRequest(
-    `${supabaseUrl}/rest/v1/scans?user_id=eq.${telegramId}&created_at=gte.${monthStart.toISOString()}&select=id`,
+  // Проверяем триал
+  const users = await supabaseRequest(
+    `${supabaseUrl}/rest/v1/users?telegram_id=eq.${telegramId}&select=trial_ends_at&limit=1`,
     { method: 'GET' },
     supabaseKey
-  )
-  const count = Array.isArray(scansData) ? scansData.length : 0
+  ).catch(() => [])
+  const user = Array.isArray(users) ? users[0] : null
+  if (user?.trial_ends_at && new Date(user.trial_ends_at) > new Date()) {
+    return { allowed: true, plan: 'trial' }
+  }
 
-  return { allowed: count < FREE_SCAN_LIMIT, used: count, limit: FREE_SCAN_LIMIT, plan: 'free' }
+  return { allowed: false, plan: 'expired' }
 }
 
 async function logScan(supabaseUrl, supabaseKey, telegramId, calories) {
   if (!telegramId) return
-
   await supabaseRequest(
     `${supabaseUrl}/rest/v1/scans`,
     {
       method: 'POST',
-      body: JSON.stringify({
-        user_id: telegramId,
-        calories: calories || null,
-      })
+      body: JSON.stringify({ user_id: telegramId, calories: calories || null })
     },
     supabaseKey
   )
@@ -94,13 +89,11 @@ export default async function handler(req, res) {
   if (supabaseUrl && supabaseKey && telegramId) {
     await trackUser(supabaseUrl, supabaseKey, telegramId, telegramName, telegramUsername)
 
-    const limit = await checkScanLimit(supabaseUrl, supabaseKey, telegramId)
-    if (!limit.allowed) {
+    const access = await checkAccess(supabaseUrl, supabaseKey, telegramId)
+    if (!access.allowed) {
       return res.status(403).json({
-        error: 'limit_reached',
-        message: `Бесплатный лимит: ${limit.limit} сканирований в месяц. Оформи подписку для безлимитного доступа.`,
-        used: limit.used,
-        limit: limit.limit,
+        error: 'trial_expired',
+        message: 'Пробный период закончился. Оформи подписку для продолжения.',
       })
     }
   }
@@ -111,7 +104,7 @@ export default async function handler(req, res) {
     const imgPart = userContent.find(p => p.type === 'image')
     const textPart = userContent.find(p => p.type === 'text')
 
-    // Text-only mode (no image)
+    // Text-only mode
     if (body.text_only || !imgPart) {
       const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -130,23 +123,14 @@ export default async function handler(req, res) {
 
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         max_tokens: body.max_tokens || 1000,
         messages: [{
           role: 'user',
           content: [
-            {
-              type: 'image_url',
-              image_url: {
-                url: `data:${imgPart.source.media_type};base64,${imgPart.source.data}`,
-                detail: 'low'
-              }
-            },
+            { type: 'image_url', image_url: { url: `data:${imgPart.source.media_type};base64,${imgPart.source.data}`, detail: 'low' } },
             { type: 'text', text: textPart.text }
           ]
         }]
@@ -154,13 +138,9 @@ export default async function handler(req, res) {
     })
 
     const data = await openaiRes.json()
-
-    if (!openaiRes.ok) {
-      return res.status(openaiRes.status).json({ error: data.error?.message || 'OpenAI error' })
-    }
+    if (!openaiRes.ok) return res.status(openaiRes.status).json({ error: data.error?.message || 'OpenAI error' })
 
     const responseText = data.choices?.[0]?.message?.content || ''
-
     if (supabaseUrl && supabaseKey && telegramId) {
       try {
         const parsed = JSON.parse(responseText.replace(/```json\s*/g, '').replace(/```/g, '').trim())
