@@ -992,16 +992,21 @@ function Profile({ profile, norms, onSave, onReset, access, tgId }) {
     {id:"halfyear",  label:"6 месяцев", price:"1 290 ₽",sub:"215 ₽/мес", badge:"−14%"},
   ];
   const openPayment = async (plan) => {
-    if(!tgId){ window.open("https://t.me/AlbiScan_bot","_blank"); return; }
+    if(!tgId){ window.Telegram?.WebApp?.openLink("https://t.me/AlbiScan_bot"); return; }
     setPayLoading(true);
     try{
       const r=await fetch("/api/payment/create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({telegram_id:tgId,plan})});
       const d=await r.json();
       if(d.url){
-        if(window.Telegram?.WebApp?.openLink) window.Telegram.WebApp.openLink(d.url);
-        else window.open(d.url,"_blank");
+        window.Telegram?.WebApp?.openLink
+          ? window.Telegram.WebApp.openLink(d.url)
+          : window.location.assign(d.url);
+      } else {
+        alert(d.error||"Не удалось создать платёж. Попробуй ещё раз.");
       }
-    }catch{}
+    }catch(e){
+      alert("Ошибка соединения. Проверь интернет и попробуй снова.");
+    }
     setPayLoading(false);
   };
 
@@ -1223,7 +1228,7 @@ function Paywall({ tgId }) {
   };
 
   const pay=async()=>{
-    if(!tgId){ window.open("https://t.me/AlbiScan_bot","_blank"); return; }
+    if(!tgId){ window.Telegram?.WebApp?.openLink("https://t.me/AlbiScan_bot"); return; }
     setLoading(true);
     try{
       const body={telegram_id:tgId,plan:sel};
@@ -1232,10 +1237,15 @@ function Paywall({ tgId }) {
       const d=await r.json();
       if(d.url){
         if(d.has_discount) setDiscount(true);
-        if(window.Telegram?.WebApp?.openLink) window.Telegram.WebApp.openLink(d.url);
-        else window.open(d.url,"_blank");
+        window.Telegram?.WebApp?.openLink
+          ? window.Telegram.WebApp.openLink(d.url)
+          : window.location.assign(d.url);
+      } else {
+        alert(d.error||"Не удалось создать платёж. Попробуй ещё раз.");
       }
-    }catch(e){}
+    }catch(e){
+      alert("Ошибка соединения. Проверь интернет и попробуй снова.");
+    }
     setLoading(false);
   };
 
