@@ -45,6 +45,9 @@ async function db(url, supabaseUrl, supabaseKey, options = {}) {
     },
   })
   const text = await res.text()
+  if (!res.ok) {
+    console.error(`DB error [${options.method||'GET'} ${url}] status=${res.status}:`, text)
+  }
   try { return JSON.parse(text) } catch { return null }
 }
 
@@ -134,25 +137,29 @@ export default async function handler(req, res) {
     const base = existing && new Date(existing.expires_at) > now ? new Date(existing.expires_at) : now
     const newExpiry = new Date(base.getTime() + days * 24 * 60 * 60 * 1000).toISOString()
 
+    const pricePaid = Math.round(parseFloat(data.sum || 0) * 100)
+
     if (existing) {
       // Продлеваем существующую
-      await db(`subscriptions?id=eq.${existing.id}`, supabaseUrl, supabaseKey, {
+      const patchRes = await db(`subscriptions?id=eq.${existing.id}`, supabaseUrl, supabaseKey, {
         method: 'PATCH',
-        headers: { 'Prefer': 'return=minimal' },
-        body: JSON.stringify({ expires_at: newExpiry, price_paid: Math.round(parseFloat(data.sum || 0) * 100) }),
+        headers: { 'Prefer': 'return=representation' },
+        body: JSON.stringify({ expires_at: newExpiry, price_paid: pricePaid }),
       })
+      console.log(`Sub PATCH result for tg=${telegramId}:`, JSON.stringify(patchRes))
     } else {
       // Создаём новую
-      await db('subscriptions', supabaseUrl, supabaseKey, {
+      const insertRes = await db('subscriptions', supabaseUrl, supabaseKey, {
         method: 'POST',
-        headers: { 'Prefer': 'resolution=merge-duplicates' },
+        headers: { 'Prefer': 'return=representation' },
         body: JSON.stringify({
           user_id: telegramId, plan: 'pro',
           starts_at: now.toISOString(), expires_at: newExpiry,
           granted_by_admin: false,
-          price_paid: Math.round(parseFloat(data.sum || 0) * 100),
+          price_paid: pricePaid,
         }),
       })
+      console.log(`Sub INSERT result for tg=${telegramId}:`, JSON.stringify(insertRes))
     }
 
     let userName = ''
