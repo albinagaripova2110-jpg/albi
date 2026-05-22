@@ -989,7 +989,7 @@ function Profile({ profile, norms, onSave, onReset, access, tgId }) {
   const profilePlans=[
     {id:"monthly",   label:"1 месяц",   price:"249 ₽",  sub:"249 ₽/мес", badge:null},
     {id:"quarterly", label:"3 месяца",  price:"599 ₽",  sub:"200 ₽/мес", badge:"−20%"},
-    {id:"halfyear",  label:"6 месяцев", price:"1 290 ₽",sub:"215 ₽/мес", badge:"−14%"},
+    {id:"halfyear",  label:"6 месяцев", price:"1 099 ₽",sub:"183 ₽/мес", badge:"−27%"},
   ];
   const openPayment = async (plan) => {
     if(!tgId){ window.Telegram?.WebApp?.openLink("https://t.me/AlbiScan_bot"); return; }
@@ -1195,7 +1195,7 @@ function Paywall({ tgId }) {
   const plans=[
     {id:"monthly",   label:"1 месяц",   price:249,  priceStr:"249 ₽",   sub:"249 ₽/мес", badge:null   },
     {id:"quarterly", label:"3 месяца",  price:599,  priceStr:"599 ₽",   sub:"200 ₽/мес", badge:"−20%" },
-    {id:"halfyear",  label:"6 месяцев", price:1290, priceStr:"1 290 ₽", sub:"215 ₽/мес", badge:"−14%" },
+    {id:"halfyear",  label:"6 месяцев", price:1099, priceStr:"1 099 ₽", sub:"183 ₽/мес", badge:"−27%" },
   ];
 
   useEffect(()=>{

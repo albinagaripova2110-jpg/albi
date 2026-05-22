@@ -70,7 +70,7 @@ export default async function handler(req, res) {
     const name = nameMap[sub.user_id] || ''
     const expiryDate = new Date(sub.expires_at).toLocaleDateString('ru', { day: 'numeric', month: 'long' })
     const greeting = name ? `<b>${name},</b> завтра` : 'Завтра'
-    const text = `${greeting} заканчивается твоя подписка Albi ⏳\n\nСрок действия: <b>${expiryDate}</b>\n\nНе хочется терять свои данные, историю и прогресс? Продли подписку - и ничего не прервётся.\n\n👇 <b>Выбери удобный тариф:</b>\n\n<b>1 месяц</b> - 249 ₽\n<b>3 месяца</b> - 599 ₽ <i>(экономия 20%)</i>\n<b>6 месяцев</b> - 1 290 ₽\n\n<i>P.S. Если есть промокод - введи его при оплате 🎁</i>`
+    const text = `${greeting} заканчивается твоя подписка Albi ⏳\n\nСрок действия: <b>${expiryDate}</b>\n\nНе хочется терять свои данные, историю и прогресс? Продли подписку - и ничего не прервётся.\n\n👇 <b>Выбери удобный тариф:</b>\n\n<b>1 месяц</b> - 249 ₽\n<b>3 месяца</b> - 599 ₽ <i>(экономия 20%)</i>\n<b>6 месяцев</b> - 1 099 ₽\n\n<i>P.S. Если есть промокод - введи его при оплате 🎁</i>`
     try {
       await sendTelegram(botToken, sub.user_id, text)
       sent++

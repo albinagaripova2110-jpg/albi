@@ -4,7 +4,7 @@ import crypto from 'crypto'
 const PLANS = {
   monthly:   { name: 'Albi 1 месяц',   price: 249,  days: 30  },
   quarterly: { name: 'Albi 3 месяца',  price: 599,  days: 90  },
-  halfyear:  { name: 'Albi 6 месяцев', price: 1290, days: 180 },
+  halfyear:  { name: 'Albi 6 месяцев', price: 1099, days: 180 },
   yearly:    { name: 'Albi 1 год',     price: 1990, days: 365 }, // legacy
 }
 const PLAN_DAYS     = { monthly: 30, quarterly: 90, halfyear: 180, yearly: 365 }
