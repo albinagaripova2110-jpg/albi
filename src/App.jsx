@@ -987,9 +987,9 @@ function Profile({ profile, norms, onSave, onReset, access, tgId }) {
   const [showPlans,setShowPlans]=useState(false);
   const [selPlan,setSelPlan]=useState("quarterly");
   const profilePlans=[
-    {id:"monthly",  label:"1 месяц",  price:"249 ₽", sub:"249 ₽/мес", badge:null},
-    {id:"quarterly",label:"3 месяца", price:"599 ₽", sub:"200 ₽/мес", badge:"−20%"},
-    {id:"yearly",   label:"1 год",    price:"1990 ₽",sub:"166 ₽/мес", badge:"−33%"},
+    {id:"monthly",   label:"1 месяц",   price:"249 ₽",  sub:"249 ₽/мес", badge:null},
+    {id:"quarterly", label:"3 месяца",  price:"599 ₽",  sub:"200 ₽/мес", badge:"−20%"},
+    {id:"halfyear",  label:"6 месяцев", price:"1 290 ₽",sub:"215 ₽/мес", badge:"−14%"},
   ];
   const openPayment = async (plan) => {
     if(!tgId){ window.open("https://t.me/AlbiScan_bot","_blank"); return; }
@@ -1076,7 +1076,7 @@ function Profile({ profile, norms, onSave, onReset, access, tgId }) {
           <div style={{marginBottom:2,color:T.muted,fontWeight:600,fontSize:11,letterSpacing:".06em",marginTop:8}}>ТЫ ПОЛУЧАЕШЬ:</div>
           <div>• Друг купил 1 месяц → <b>+7 дней</b></div>
           <div>• Друг купил 3 месяца → <b>+14 дней</b></div>
-          <div>• Друг купил 1 год → <b>+1 месяц</b></div>
+          <div>• Друг купил 6 месяцев → <b>+21 день</b></div>
           <div style={{marginTop:8,fontSize:11,color:T.faint}}>Бонус начисляется после оплаты друга</div>
         </div>}
 
@@ -1184,9 +1184,9 @@ function Paywall({ tgId }) {
   const [loading,setLoading]=useState(false);
   const [discount,setDiscount]=useState(false);
   const plans=[
-    {id:"monthly",  label:"1 месяц",  price:249,  priceStr:"249 ₽", sub:"249 ₽/мес",  badge:null,  },
-    {id:"quarterly",label:"3 месяца", price:599,  priceStr:"599 ₽", sub:"200 ₽/мес",  badge:"−20%",},
-    {id:"yearly",   label:"1 год",    price:1990, priceStr:"1990 ₽",sub:"166 ₽/мес",  badge:"−33%",},
+    {id:"monthly",   label:"1 месяц",   price:249,  priceStr:"249 ₽",   sub:"249 ₽/мес", badge:null   },
+    {id:"quarterly", label:"3 месяца",  price:599,  priceStr:"599 ₽",   sub:"200 ₽/мес", badge:"−20%" },
+    {id:"halfyear",  label:"6 месяцев", price:1290, priceStr:"1 290 ₽", sub:"215 ₽/мес", badge:"−14%" },
   ];
 
   // Проверяем реферальную скидку при открытии экрана

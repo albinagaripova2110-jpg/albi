@@ -3,13 +3,35 @@ import crypto from 'crypto'
 const PLAN_DAYS = {
   monthly:   30,
   quarterly: 90,
-  yearly:    365,
+  halfyear:  180,
+  yearly:    365, // legacy
 }
 
 const REFERRAL_BONUS = {
   monthly:   7,
   quarterly: 14,
-  yearly:    30,
+  halfyear:  21,
+  yearly:    30, // legacy
+}
+
+const PLAN_NAMES = {
+  monthly:   '1 месяц',
+  quarterly: '3 месяца',
+  halfyear:  '6 месяцев',
+  yearly:    '1 год',
+}
+
+// Сообщение рефереру при начислении бонуса
+function referralBonusText(userName, bonusDays, newExpiry, plan, referrerId) {
+  const date = new Date(newExpiry).toLocaleDateString('ru', { day: 'numeric', month: 'long' })
+  const refLink = `https://t.me/AlbiScan_bot?start=ref_${referrerId}`
+  if (plan === 'monthly') {
+    return `${userName}, твой друг только что оплатил подписку Albi! 🥳\n\nКак и обещали — тебе начислено +${bonusDays} дней бесплатного доступа.\nТвоя подписка теперь действует до: ${date}\n\nЧем больше друзей — тем дольше бесплатно 😉\n\nПоделись ссылкой ещё раз 👇\n${refLink}`
+  }
+  if (plan === 'quarterly') {
+    return `${userName}, отличные новости! 🎊\nТвой друг купил подписку на 3 месяца — и ты получаешь +${bonusDays} дней бесплатно!\n\nТвоя подписка теперь действует до: ${date}\nСпасибо что делишься Albi — это лучшая поддержка 🤍\n${refLink}`
+  }
+  return `${userName}, это просто огонь! 🔥\nТвой друг взял подписку на 6 месяцев — и ты получаешь +${bonusDays} дней бесплатно!\n\nТвоя подписка теперь действует до: ${date}\nПродолжай делиться — каждый друг приближает тебя к бесплатному Albi навсегда 😄\n${refLink}`
 }
 
 async function sendTelegram(botToken, chatId, text) {
@@ -169,6 +191,13 @@ export default async function handler(req, res) {
     })
     console.log('Subscription result:', JSON.stringify(subResult))
 
+    // Получаем имя пользователя для сообщений
+    let userName = ''
+    if (supabaseUrl && supabaseKey) {
+      const userRow = await db(`users?telegram_id=eq.${telegramId}&select=name&limit=1`, supabaseUrl, supabaseKey, { method: 'GET' })
+      userName = Array.isArray(userRow) && userRow[0]?.name ? userRow[0].name.split(' ')[0] : ''
+    }
+
     // Начисляем бонусные дни рефереру
     const bonusDays = REFERRAL_BONUS[plan] || 0
     if (bonusDays > 0) {
@@ -183,13 +212,15 @@ export default async function handler(req, res) {
           `subscriptions?user_id=eq.${referrerId}&plan=eq.pro&order=expires_at.desc&limit=1`,
           supabaseUrl, supabaseKey, { method: 'GET' }
         )
+        let referrerNewExpiry = null
         if (Array.isArray(referrerSubs) && referrerSubs.length > 0) {
           const base = new Date(referrerSubs[0].expires_at) > now ? new Date(referrerSubs[0].expires_at) : now
           base.setDate(base.getDate() + bonusDays)
+          referrerNewExpiry = base.toISOString()
           await db(`subscriptions?id=eq.${referrerSubs[0].id}`, supabaseUrl, supabaseKey, {
             method: 'PATCH',
             headers: { 'Prefer': 'return=minimal' },
-            body: JSON.stringify({ expires_at: base.toISOString() })
+            body: JSON.stringify({ expires_at: referrerNewExpiry })
           })
         }
         await db(`referrals?id=eq.${ref.id}`, supabaseUrl, supabaseKey, {
@@ -197,15 +228,23 @@ export default async function handler(req, res) {
           headers: { 'Prefer': 'return=minimal' },
           body: JSON.stringify({ status: 'paid', bonus_days: bonusDays, bonus_applied: true })
         })
+        // Сообщение рефереру о начислении бонуса
+        if (botToken && referrerNewExpiry) {
+          const referrerRow = await db(`users?telegram_id=eq.${referrerId}&select=name&limit=1`, supabaseUrl, supabaseKey, { method: 'GET' })
+          const referrerName = Array.isArray(referrerRow) && referrerRow[0]?.name ? referrerRow[0].name.split(' ')[0] : ''
+          await sendTelegram(botToken, referrerId, referralBonusText(referrerName, bonusDays, referrerNewExpiry, plan, referrerId))
+        }
       }
     }
 
-    // Уведомление пользователю
+    // Уведомление пользователю после оплаты
     if (botToken) {
-      const planNames = { monthly: '1 месяц', quarterly: '3 месяца', yearly: '1 год' }
       const expiryDate = new Date(newExpiry).toLocaleDateString('ru', { day: 'numeric', month: 'long' })
+      const daysLeft = Math.ceil((new Date(newExpiry) - now) / 86400000)
+      const refLink = `https://t.me/AlbiScan_bot?start=ref_${telegramId}`
+      const greeting = userName ? `${userName}, оплата` : 'Оплата'
       await sendTelegram(botToken, telegramId,
-        `✅ Оплата получена!\n\nПодписка Albi Pro — ${planNames[plan] || plan}\nДоступ открыт до ${expiryDate}\n\nСпасибо, что с нами! 🌿`
+        `${greeting} прошла успешно! 🎉\nПодписка активирована:\n\nДействует до: ${expiryDate}\nОсталось дней: ${daysLeft}\n\nТеперь у тебя полный доступ ко всем функциям Albi без ограничений.\n\nКстати — поделись своей реферальной ссылкой с другом, и когда он оплатит подписку, ты получишь бонусные дни совершенно бесплатно 🤍\n👇 Твоя ссылка:\n${refLink}`
       )
     }
 

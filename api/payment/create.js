@@ -1,9 +1,10 @@
 import crypto from 'crypto'
 
 const PLANS = {
-  monthly:   { name: 'Albi 1 месяц',  price: 249,  days: 30  },
-  quarterly: { name: 'Albi 3 месяца', price: 599,  days: 90  },
-  yearly:    { name: 'Albi 1 год',    price: 1990, days: 365 },
+  monthly:   { name: 'Albi 1 месяц',    price: 249,  days: 30  },
+  quarterly: { name: 'Albi 3 месяца',   price: 599,  days: 90  },
+  halfyear:  { name: 'Albi 6 месяцев',  price: 1290, days: 180 },
+  yearly:    { name: 'Albi 1 год',      price: 1990, days: 365 }, // legacy
 }
 
 export default async function handler(req, res) {
