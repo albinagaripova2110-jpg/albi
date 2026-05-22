@@ -116,19 +116,19 @@ export default async function handler(req, res) {
       ])
     ) : null
 
+    // Собираем payload — null-поля НЕ включаем чтобы не затирать существующие данные
+    const dataPayload = { telegram_id, updated_at: new Date().toISOString() }
+    if (profile)          dataPayload.profile  = profile
+    if (historyNoImages)  dataPayload.history  = historyNoImages
+    if (weights)          dataPayload.weights  = weights
+    if (reminders)        dataPayload.reminders = reminders
+
     await supabaseRequest(
       `${supabaseUrl}/rest/v1/user_data`,
       {
         method: 'POST',
         headers: { 'Prefer': 'resolution=merge-duplicates' },
-        body: JSON.stringify({
-          telegram_id,
-          profile: profile || null,
-          history: historyNoImages || null,
-          weights: weights || null,
-          reminders: reminders || null,
-          updated_at: new Date().toISOString(),
-        })
+        body: JSON.stringify(dataPayload)
       },
       supabaseKey
     )

@@ -1450,24 +1450,23 @@ export default function App() {
       if(tgId){
         const cloud=await syncLoad(tgId);
         if(cloud){
-          if(cloud.profile)setProfile(cloud.profile);
-          if(cloud.history)setHistory(cloud.history);
-          if(cloud.weights)setWeights(cloud.weights);
+          if(cloud.profile)  setProfile(cloud.profile);
+          if(cloud.history)  setHistory(cloud.history);
+          if(cloud.weights)  setWeights(cloud.weights);
           if(cloud.reminders)setReminders(cloud.reminders);
-          // Статус доступа из ответа сервера
-          if(cloud.access) setAccess(cloud.access);
-          else setAccess({allowed:true,plan:"unknown"});
-          setReady(true);
-          return;
+          if(cloud.access)   setAccess(cloud.access);
+          else               setAccess({allowed:true,plan:"unknown"});
+          // Только если профиль реально есть — выходим, иначе пробуем localStorage
+          if(cloud.profile){ setReady(true); return; }
+        } else {
+          // Supabase недоступен или новый пользователь
+          setAccess({allowed:true,plan:"trial"});
         }
-        // Пользователь есть в tg но данных нет — новый, триал будет после первого sync POST
-        setAccess({allowed:true,plan:"trial"});
       } else {
-        // Нет tgId — не блокируем (десктоп/браузер)
         setAccess({allowed:true,plan:"unknown"});
       }
 
-      // Fallback — локальное хранилище
+      // Fallback — локальное хранилище (если Supabase не вернул профиль)
       const [p,h,w,r]=await Promise.all([load("albi_profile"),load("albi_history"),load("albi_weights"),load("albi_reminders")]);
       if(p)setProfile(p); if(h)setHistory(h); if(w)setWeights(w); if(r)setReminders(r);
     }catch(e){console.log(e);setAccess({allowed:true,plan:"unknown"});}
@@ -1479,9 +1478,9 @@ export default function App() {
   useEffect(()=>{if(ready)window.storage.set("albi_weights",JSON.stringify(weights)).catch(()=>{});},[weights,ready]);
   useEffect(()=>{if(ready)window.storage.set("albi_reminders",JSON.stringify(reminders)).catch(()=>{});},[reminders,ready]);
 
-  // Синхронизация с Supabase при каждом изменении
+  // Синхронизация с Supabase при каждом изменении (только если профиль заполнен)
   useEffect(()=>{
-    if(!ready)return;
+    if(!ready||!profile)return; // Не перезаписываем профиль null-ом
     const tgId=getTgId();
     syncSave(tgId,{profile,history,weights,reminders});
   },[profile,history,weights,reminders,ready]);
