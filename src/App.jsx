@@ -1208,7 +1208,7 @@ function Paywall({ tgId }) {
     if(!promoCode.trim()) return;
     setPromoLoading(true);
     try{
-      const r=await fetch(`/api/payment/apply-promo?code=${encodeURIComponent(promoCode.trim().toUpperCase())}`);
+      const r=await fetch(`/api/payment/create?code=${encodeURIComponent(promoCode.trim().toUpperCase())}`);
       const d=await r.json();
       if(d.valid){
         const label=d.discount_pct>0?`Скидка ${d.discount_pct}%`:`+${d.bonus_days} дней бесплатно`;
