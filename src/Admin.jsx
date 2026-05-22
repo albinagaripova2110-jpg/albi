@@ -479,10 +479,68 @@ function ReferralsTab({ secret }) {
   </div>
 }
 
+// ── Payments Tab ─────────────────────────────────────────────────
+function PaymentsTab({ secret }) {
+  const [payments, setPayments] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  const PLAN_LABELS = { monthly: "1 месяц", quarterly: "3 месяца", halfyear: "6 месяцев", yearly: "1 год" }
+  const PLAN_PRICES = { monthly: 249, quarterly: 599, halfyear: 1099, yearly: 1990 }
+
+  useEffect(() => {
+    api("/api/admin?section=payments", {}, secret)
+      .then(d => { setPayments(Array.isArray(d) ? d : []); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [])
+
+  const total = payments.reduce((s, p) => s + (p.price || 0), 0)
+  const byPlan = {}
+  payments.forEach(p => { byPlan[p.plan] = (byPlan[p.plan] || 0) + 1 })
+
+  return <div style={{ display: "grid", gap: 16 }}>
+    {/* Stats row */}
+    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+      <StatCard label="Всего оплат" value={payments.length} color={T.text} />
+      <StatCard label="Сумма" value={`${(total / 100).toLocaleString("ru")} ₽`} color={T.green} sub="по всем заказам" />
+      {Object.entries(byPlan).map(([plan, cnt]) => (
+        <StatCard key={plan} label={PLAN_LABELS[plan] || plan} value={cnt} sub={`× ${PLAN_PRICES[plan] || "?"} ₽`} color={T.accent} />
+      ))}
+    </div>
+
+    {/* Payments list */}
+    <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 16, overflow: "hidden" }}>
+      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${T.border}`, fontSize: 11, fontWeight: 600, letterSpacing: ".12em", color: T.muted, textTransform: "uppercase" }}>
+        Все платежи · {payments.length}
+      </div>
+      {loading && <div style={{ padding: 40, textAlign: "center", color: T.faint, fontSize: 13 }}>Загрузка…</div>}
+      {!loading && !payments.length && <div style={{ padding: 40, textAlign: "center", color: T.faint, fontSize: 13 }}>Платежей пока нет</div>}
+      {payments.map((p, i) => (
+        <div key={p.order_id || i} style={{ display: "grid", gridTemplateColumns: "1fr 120px 90px 80px", gap: 12, padding: "12px 20px", borderBottom: i < payments.length - 1 ? `1px solid ${T.border}` : "none", alignItems: "center", fontSize: 13 }}>
+          <div>
+            <div style={{ fontWeight: 500, color: T.text }}>{p.user_name || `ID ${p.telegram_id}`}</div>
+            <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>
+              {p.user_username ? `@${p.user_username} · ` : ""}{p.telegram_id}
+            </div>
+            <div style={{ fontSize: 10, color: T.faint, marginTop: 2, fontFamily: "monospace" }}>{p.order_id}</div>
+          </div>
+          <div style={{ fontSize: 11, color: T.faint, textAlign: "center" }}>{fmtTime(p.created_at)}</div>
+          <div style={{ textAlign: "center" }}>
+            <Badge label={PLAN_LABELS[p.plan] || p.plan || "—"} color={T.accent} bg={T.accentBg} />
+          </div>
+          <div style={{ textAlign: "right", fontWeight: 700, color: T.green, fontSize: 14 }}>
+            {p.price ? `${p.price} ₽` : "—"}
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+}
+
 // ── Main Admin ───────────────────────────────────────────────────
 const TABS = [
   { id: "dashboard", label: "Дашборд", ico: "📊" },
   { id: "users", label: "Пользователи", ico: "👥" },
+  { id: "payments", label: "Оплаты", ico: "💰" },
   { id: "subscriptions", label: "Подписки", ico: "💳" },
   { id: "promo", label: "Промокоды", ico: "🎟️" },
   { id: "referrals", label: "Рефералы", ico: "🔗" },
@@ -560,6 +618,7 @@ export default function Admin() {
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px" }}>
         {tab === "dashboard" && <DashboardTab data={data} />}
         {tab === "users" && <UsersTab data={data} secret={secret} onRefresh={() => load(secret)} />}
+        {tab === "payments" && <PaymentsTab secret={secret} />}
         {tab === "subscriptions" && <SubscriptionsTab data={data} />}
         {tab === "promo" && <PromoTab secret={secret} />}
         {tab === "referrals" && <ReferralsTab secret={secret} />}

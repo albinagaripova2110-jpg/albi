@@ -28,6 +28,26 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Supabase not configured' })
   }
 
+  // ?section=payments — список платежей
+  if (req.query.section === 'payments') {
+    try {
+      const payments = await supabaseGet(supabaseUrl, supabaseKey,
+        'payment_orders?order=created_at.desc&limit=300&select=*')
+      // Подтягиваем имена пользователей
+      const users = await supabaseGet(supabaseUrl, supabaseKey, 'users?select=telegram_id,name,username')
+      const userMap = {}
+      if (Array.isArray(users)) users.forEach(u => { userMap[u.telegram_id] = u })
+      const result = (Array.isArray(payments) ? payments : []).map(p => ({
+        ...p,
+        user_name: userMap[p.telegram_id]?.name || null,
+        user_username: userMap[p.telegram_id]?.username || null,
+      }))
+      return res.status(200).json(result)
+    } catch (e) {
+      return res.status(500).json({ error: e.message })
+    }
+  }
+
   try {
     const [users, scans, subs] = await Promise.all([
       supabaseGet(supabaseUrl, supabaseKey, 'users?select=*&order=created_at.desc'),

@@ -1365,6 +1365,25 @@ export default function App() {
   const [access,setAccess]=useState(null); // null=загрузка, {allowed,plan}
   const [tgId]=useState(()=>getTgId());
 
+  // Обновляем статус подписки когда пользователь возвращается в приложение после оплаты
+  useEffect(()=>{
+    const refresh=async()=>{
+      const id=getTgId();
+      if(!id)return;
+      try{
+        const r=await fetch(`/api/sync?telegram_id=${id}`);
+        if(r.ok){const d=await r.json();if(d?.access)setAccess(d.access);}
+      }catch{}
+    };
+    const onVisible=()=>{ if(document.visibilityState==="visible") refresh(); };
+    document.addEventListener("visibilitychange",onVisible);
+    window.addEventListener("focus",onVisible);
+    return()=>{
+      document.removeEventListener("visibilitychange",onVisible);
+      window.removeEventListener("focus",onVisible);
+    };
+  },[]);
+
   useEffect(()=>{(async()=>{
     try{
       const load=async(k)=>{try{const r=await window.storage.get(k);return r?JSON.parse(r.value):null;}catch{return null;}};
