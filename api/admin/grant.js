@@ -85,7 +85,8 @@ export default async function handler(req, res) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: telegram_id,
-        text: `🎁 Тебе выдан доступ Albi Pro!\n\nПодписка активна до ${expiryDate}\n\nПриятного использования! 🌿`
+        parse_mode: 'HTML',
+        text: `🎁 <b>Тебе выдан доступ Albi Pro!</b>\n\nПодписка активна до <b>${expiryDate}</b>\n\n<i>Приятного использования!</i> 🌿`
       })
     }).catch(() => {})
   }

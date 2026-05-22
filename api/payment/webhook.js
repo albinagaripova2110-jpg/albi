@@ -26,19 +26,19 @@ function referralBonusText(userName, bonusDays, newExpiry, plan, referrerId) {
   const date = new Date(newExpiry).toLocaleDateString('ru', { day: 'numeric', month: 'long' })
   const refLink = `https://t.me/AlbiScan_bot?start=ref_${referrerId}`
   if (plan === 'monthly') {
-    return `${userName}, твой друг только что оплатил подписку Albi! 🥳\n\nКак и обещали — тебе начислено +${bonusDays} дней бесплатного доступа.\nТвоя подписка теперь действует до: ${date}\n\nЧем больше друзей — тем дольше бесплатно 😉\n\nПоделись ссылкой ещё раз 👇\n${refLink}`
+    return `<b>${userName},</b> твой друг только что оплатил подписку Albi! 🥳\n\nКак и обещали - тебе начислено <b>+${bonusDays} дней</b> бесплатного доступа.\nПодписка теперь действует до: <b>${date}</b>\n\n<i>Чем больше друзей - тем дольше бесплатно</i> 😉\n\nПоделись ссылкой ещё раз 👇\n${refLink}`
   }
   if (plan === 'quarterly') {
-    return `${userName}, отличные новости! 🎊\nТвой друг купил подписку на 3 месяца — и ты получаешь +${bonusDays} дней бесплатно!\n\nТвоя подписка теперь действует до: ${date}\nСпасибо что делишься Albi — это лучшая поддержка 🤍\n${refLink}`
+    return `<b>${userName},</b> отличные новости! 🎊\nТвой друг купил подписку на 3 месяца - и ты получаешь <b>+${bonusDays} дней</b> бесплатно!\n\nПодписка теперь действует до: <b>${date}</b>\n<i>Спасибо, что делишься Albi - это лучшая поддержка</i> 🤍\n${refLink}`
   }
-  return `${userName}, это просто огонь! 🔥\nТвой друг взял подписку на 6 месяцев — и ты получаешь +${bonusDays} дней бесплатно!\n\nТвоя подписка теперь действует до: ${date}\nПродолжай делиться — каждый друг приближает тебя к бесплатному Albi навсегда 😄\n${refLink}`
+  return `<b>${userName},</b> это просто огонь! 🔥\nТвой друг взял подписку на 6 месяцев - и ты получаешь <b>+${bonusDays} дней</b> бесплатно!\n\nПодписка теперь действует до: <b>${date}</b>\n<i>Продолжай делиться - каждый друг приближает тебя к бесплатному Albi навсегда</i> 😄\n${refLink}`
 }
 
 async function sendTelegram(botToken, chatId, text) {
   await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text })
+    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' })
   })
 }
 
@@ -244,7 +244,7 @@ export default async function handler(req, res) {
       const refLink = `https://t.me/AlbiScan_bot?start=ref_${telegramId}`
       const greeting = userName ? `${userName}, оплата` : 'Оплата'
       await sendTelegram(botToken, telegramId,
-        `${greeting} прошла успешно! 🎉\nПодписка активирована:\n\nДействует до: ${expiryDate}\nОсталось дней: ${daysLeft}\n\nТеперь у тебя полный доступ ко всем функциям Albi без ограничений.\n\nКстати — поделись своей реферальной ссылкой с другом, и когда он оплатит подписку, ты получишь бонусные дни совершенно бесплатно 🤍\n👇 Твоя ссылка:\n${refLink}`
+        `<b>${greeting} прошла успешно!</b> 🎉\n\nПодписка активирована:\n<b>Действует до: ${expiryDate}</b>\n<i>Осталось дней: ${daysLeft}</i>\n\nТеперь у тебя полный доступ ко всем функциям Albi без ограничений.\n\nПоделись своей реферальной ссылкой с другом - когда он оплатит подписку, ты получишь <b>бонусные дни</b> совершенно бесплатно 🤍\n👇 Твоя ссылка:\n${refLink}`
       )
     }
 

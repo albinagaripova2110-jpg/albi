@@ -20,7 +20,7 @@ async function sendTelegram(botToken, chatId, text) {
   await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text })
+    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' })
   })
 }
 
@@ -69,8 +69,8 @@ export default async function handler(req, res) {
   for (const sub of subs) {
     const name = nameMap[sub.user_id] || ''
     const expiryDate = new Date(sub.expires_at).toLocaleDateString('ru', { day: 'numeric', month: 'long' })
-    const greeting = name ? `${name}, завтра` : 'Завтра'
-    const text = `${greeting} заканчивается твоя подписка Albi ⏳\n\nСрок действия: ${expiryDate}\n\nНе хочется терять свои данные, историю и прогресс? Продли подписку прямо сейчас — и ничего не прервётся.\n\n👇 Выбери удобный тариф:\n\n1 месяц — 249 ₽\n3 месяца — 599 ₽ (экономия 20%)\n6 месяцев — 1 290 ₽\n\nP.S. Если у тебя есть промокод — введи его при оплате 🎁`
+    const greeting = name ? `<b>${name},</b> завтра` : 'Завтра'
+    const text = `${greeting} заканчивается твоя подписка Albi ⏳\n\nСрок действия: <b>${expiryDate}</b>\n\nНе хочется терять свои данные, историю и прогресс? Продли подписку - и ничего не прервётся.\n\n👇 <b>Выбери удобный тариф:</b>\n\n<b>1 месяц</b> - 249 ₽\n<b>3 месяца</b> - 599 ₽ <i>(экономия 20%)</i>\n<b>6 месяцев</b> - 1 290 ₽\n\n<i>P.S. Если есть промокод - введи его при оплате 🎁</i>`
     try {
       await sendTelegram(botToken, sub.user_id, text)
       sent++
