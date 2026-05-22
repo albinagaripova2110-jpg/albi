@@ -92,58 +92,169 @@ function DashboardTab({ data }) {
 }
 
 // ── Users Tab ────────────────────────────────────────────────────
+function Chip({ label, active, onClick, color }) {
+  const c = color || T.accent
+  return <button onClick={onClick} style={{
+    padding: "5px 14px", borderRadius: 50, border: `1.5px solid ${active ? c : T.border}`,
+    background: active ? (color === T.red ? T.redBg : color === T.green ? T.greenBg : T.accentBg) : T.bg,
+    color: active ? c : T.muted, cursor: "pointer", fontSize: 12, fontWeight: active ? 600 : 400,
+    whiteSpace: "nowrap", transition: "all .15s"
+  }}>{label}</button>
+}
+
 function UsersTab({ data, secret, onRefresh }) {
-  const [search, setSearch] = useState("")
-  const [selected, setSelected] = useState(null)
-  const [grantDays, setGrantDays] = useState("30")
-  const [granting, setGranting] = useState(false)
-  const [grantMsg, setGrantMsg] = useState(null)
+  const [search, setSearch]           = useState("")
+  const [statusFilter, setStatus]     = useState("all")   // all | pro | trial | expired
+  const [planFilter, setPlan]         = useState("all")   // all | monthly | quarterly | halfyear | admin
+  const [expiryFilter, setExpiry]     = useState("all")   // all | day1 | day5 | last1 | last3 | last7
+  const [selected, setSelected]       = useState(null)
+  const [grantDays, setGrantDays]     = useState("30")
+  const [granting, setGranting]       = useState(false)
+  const [grantMsg, setGrantMsg]       = useState(null)
 
   const { users, subscriptions } = data
-  const filtered = (users || []).filter(u => {
-    if (!search) return true
-    const q = search.toLowerCase()
-    return (u.name || "").toLowerCase().includes(q) || (u.username || "").toLowerCase().includes(q) || String(u.telegram_id).includes(q)
-  })
+  const now = new Date()
 
-  const getSubForUser = (tid) => (subscriptions || []).filter(s => s.user_id === tid).sort((a, b) => new Date(b.expires_at) - new Date(a.expires_at))[0] || null
+  const getSubForUser = (tid) =>
+    (subscriptions || [])
+      .filter(s => s.user_id === tid)
+      .sort((a, b) => new Date(b.expires_at) - new Date(a.expires_at))[0] || null
+
+  // Угадываем тариф по длине подписки
+  const inferPlan = (sub) => {
+    if (!sub?.starts_at) return null
+    if (sub.granted_by_admin) return "admin"
+    const d = Math.round((new Date(sub.expires_at) - new Date(sub.starts_at)) / 86400000)
+    if (d <= 35)  return "monthly"
+    if (d <= 100) return "quarterly"
+    return "halfyear"
+  }
+
+  const filtered = (users || []).filter(u => {
+    // Поиск
+    if (search) {
+      const q = search.toLowerCase()
+      if (!(u.name || "").toLowerCase().includes(q) &&
+          !(u.username || "").toLowerCase().includes(q) &&
+          !String(u.telegram_id).includes(q)) return false
+    }
+
+    const sub    = getSubForUser(u.telegram_id)
+    const isPro  = sub && new Date(sub.expires_at) > now
+    const isTrial = !isPro && u.trial_ends_at && new Date(u.trial_ends_at) > now
+
+    // Фильтр по статусу
+    if (statusFilter === "pro"     && !isPro)              return false
+    if (statusFilter === "trial"   && !isTrial)            return false
+    if (statusFilter === "expired" && (isPro || isTrial))  return false
+
+    // Фильтр по тарифу (только для Pro)
+    if (planFilter !== "all") {
+      if (!isPro) return false
+      if (inferPlan(sub) !== planFilter) return false
+    }
+
+    // Фильтр по дням подписки / сроку
+    if (expiryFilter !== "all") {
+      if (!isPro || !sub) return false
+      const daysLeft  = Math.ceil((new Date(sub.expires_at) - now) / 86400000)
+      const dayOfSub  = Math.ceil((now - new Date(sub.starts_at)) / 86400000)
+      if (expiryFilter === "last1"  && daysLeft > 1)   return false
+      if (expiryFilter === "last3"  && daysLeft > 3)   return false
+      if (expiryFilter === "last7"  && daysLeft > 7)   return false
+      if (expiryFilter === "day1"   && dayOfSub > 3)   return false  // первые 3 дня
+      if (expiryFilter === "day5"   && (dayOfSub < 4 || dayOfSub > 7)) return false  // дни 4–7
+    }
+
+    return true
+  })
 
   const grant = async () => {
     if (!selected || !grantDays) return
     setGranting(true); setGrantMsg(null)
     const res = await api("/api/admin/grant", { method: "POST", body: JSON.stringify({ telegram_id: selected.telegram_id, days: parseInt(grantDays) }) }, secret)
-    if (res.ok) {
-      setGrantMsg(`✅ Выдано ${grantDays} дней до ${fmtDate(res.expires_at)}`)
-      onRefresh()
-    } else {
-      setGrantMsg("❌ Ошибка: " + (res.error || ""))
-    }
+    if (res.ok) { setGrantMsg(`✅ Выдано ${grantDays} дней до ${fmtDate(res.expires_at)}`); onRefresh() }
+    else          setGrantMsg("❌ Ошибка: " + (res.error || ""))
     setGranting(false)
   }
 
+  const PLAN_LABELS = { monthly: "1 месяц", quarterly: "3 месяца", halfyear: "6 месяцев", admin: "🎁 Админ" }
+
   return <div style={{ display: "grid", gridTemplateColumns: selected ? "1fr 320px" : "1fr", gap: 16 }}>
     <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 16, overflow: "hidden" }}>
+
+      {/* Поиск + счётчик */}
       <div style={{ padding: "14px 20px", borderBottom: `1px solid ${T.border}`, display: "flex", gap: 12, alignItems: "center" }}>
-        <input placeholder="Поиск..." value={search} onChange={e => setSearch(e.target.value)}
+        <input placeholder="Поиск по имени, @username, ID…" value={search} onChange={e => setSearch(e.target.value)}
           style={{ flex: 1, background: T.bg, border: `1.5px solid ${T.border}`, borderRadius: 50, padding: "7px 14px", fontSize: 13, color: T.text, outline: "none", fontFamily: "Manrope" }} />
-        <span style={{ fontSize: 11, color: T.faint }}>{filtered.length} чел.</span>
+        <span style={{ fontSize: 11, color: T.faint, whiteSpace: "nowrap" }}>{filtered.length} чел.</span>
       </div>
+
+      {/* Фильтры */}
+      <div style={{ padding: "12px 20px", borderBottom: `1px solid ${T.border}`, display: "flex", flexDirection: "column", gap: 8 }}>
+        {/* Статус */}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: 10, fontWeight: 600, color: T.faint, textTransform: "uppercase", letterSpacing: ".1em", marginRight: 2 }}>Статус</span>
+          {[["all","Все"],["pro","Pro"],["trial","Триал"],["expired","Нет доступа"]].map(([v,l]) =>
+            <Chip key={v} label={l} active={statusFilter===v} onClick={()=>{ setStatus(v); setPlan("all"); setExpiry("all") }}
+              color={v==="pro"?T.green:v==="trial"?T.accent:v==="expired"?T.red:T.accent} />
+          )}
+        </div>
+
+        {/* Тариф */}
+        {(statusFilter === "pro" || statusFilter === "all") && <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: 10, fontWeight: 600, color: T.faint, textTransform: "uppercase", letterSpacing: ".1em", marginRight: 2 }}>Тариф</span>
+          {[["all","Все"],["monthly","1 месяц"],["quarterly","3 месяца"],["halfyear","6 месяцев"],["admin","🎁 Админ"]].map(([v,l]) =>
+            <Chip key={v} label={l} active={planFilter===v} onClick={()=>setPlan(v)} />
+          )}
+        </div>}
+
+        {/* Дни подписки */}
+        {(statusFilter === "pro" || statusFilter === "all") && <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: 10, fontWeight: 600, color: T.faint, textTransform: "uppercase", letterSpacing: ".1em", marginRight: 2 }}>Срок</span>
+          {[
+            ["all",   "Все"],
+            ["day1",  "Первые дни (1–3)"],
+            ["day5",  "День 4–7"],
+            ["last7", "До 7 дней"],
+            ["last3", "До 3 дней ⚡"],
+            ["last1", "Последний день ⚠️"],
+          ].map(([v,l]) =>
+            <Chip key={v} label={l} active={expiryFilter===v} onClick={()=>setExpiry(v)}
+              color={v==="last1"?T.red:v==="last3"?T.accent:T.accent} />
+          )}
+        </div>}
+      </div>
+
+      {/* Список */}
+      {filtered.length === 0 && <div style={{ padding: 40, textAlign: "center", color: T.faint, fontSize: 13 }}>Никого не найдено</div>}
       {filtered.map((u, i) => {
-        const sub = getSubForUser(u.telegram_id)
-        const sel = selected?.telegram_id === u.telegram_id
-        return <div key={u.telegram_id} onClick={() => setSelected(sel ? null : u)} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, padding: "12px 20px", borderBottom: i < filtered.length - 1 ? `1px solid ${T.border}` : "none", cursor: "pointer", background: sel ? T.accentBg : "transparent", transition: "background .15s" }}>
+        const sub      = getSubForUser(u.telegram_id)
+        const isPro    = sub && new Date(sub.expires_at) > now
+        const daysLeft = isPro ? Math.ceil((new Date(sub.expires_at) - now) / 86400000) : null
+        const dayOfSub = isPro && sub.starts_at ? Math.ceil((now - new Date(sub.starts_at)) / 86400000) : null
+        const sel      = selected?.telegram_id === u.telegram_id
+        return <div key={u.telegram_id} onClick={() => setSelected(sel ? null : u)}
+          style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, padding: "12px 20px", borderBottom: i < filtered.length-1 ? `1px solid ${T.border}` : "none", cursor: "pointer", background: sel ? T.accentBg : "transparent", transition: "background .15s" }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 500, color: T.text }}>{u.name || "—"}</div>
             <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>{u.username ? `@${u.username} · ` : ""}{u.telegram_id}</div>
+            {isPro && dayOfSub && <div style={{ fontSize: 10, color: T.faint, marginTop: 2 }}>
+              День {dayOfSub} · {PLAN_LABELS[inferPlan(sub)] || ""}
+            </div>}
           </div>
           <div style={{ textAlign: "right" }}>
             <PlanBadge sub={sub} user={u} />
-            <div style={{ fontSize: 10, color: T.faint, marginTop: 4 }}>{fmtDate(u.created_at)}</div>
+            {daysLeft !== null && <div style={{ fontSize: 10, marginTop: 4, color: daysLeft <= 1 ? T.red : daysLeft <= 3 ? T.accent : T.faint }}>
+              {daysLeft <= 1 ? "⚠️ последний день" : `ещё ${daysLeft} дн.`}
+            </div>}
+            {!isPro && <div style={{ fontSize: 10, color: T.faint, marginTop: 4 }}>{fmtDate(u.created_at)}</div>}
           </div>
         </div>
       })}
     </div>
 
+    {/* Панель пользователя */}
     {selected && <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 16, padding: 20, height: "fit-content", position: "sticky", top: 0 }}>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
         <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 400 }}>Пользователь</div>
@@ -159,16 +270,28 @@ function UsersTab({ data, secret, onRefresh }) {
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".1em", color: T.muted, textTransform: "uppercase", marginBottom: 8 }}>Подписка</div>
         <PlanBadge sub={getSubForUser(selected.telegram_id)} user={selected} />
-        {getSubForUser(selected.telegram_id)?.expires_at && <div style={{ fontSize: 11, color: T.muted, marginTop: 6 }}>Подписка до: {fmtDate(getSubForUser(selected.telegram_id).expires_at)}</div>}
+        {(() => {
+          const s = getSubForUser(selected.telegram_id)
+          const p = inferPlan(s)
+          const isActive = s && new Date(s.expires_at) > now
+          const d = isActive ? Math.ceil((now - new Date(s.starts_at)) / 86400000) : null
+          const left = isActive ? Math.ceil((new Date(s.expires_at) - now) / 86400000) : null
+          return <>
+            {s?.expires_at && <div style={{ fontSize: 11, color: T.muted, marginTop: 6 }}>До: {fmtDate(s.expires_at)}</div>}
+            {p && p !== "admin" && <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>Тариф: {PLAN_LABELS[p]}</div>}
+            {d !== null && <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>День подписки: {d}</div>}
+            {left !== null && <div style={{ fontSize: 11, color: left <= 3 ? T.red : T.muted, marginTop: 2, fontWeight: left <= 3 ? 600 : 400 }}>Осталось: {left} дн.</div>}
+          </>
+        })()}
         {selected.trial_ends_at && <div style={{ fontSize: 11, color: T.muted, marginTop: 4 }}>Триал до: {fmtDate(selected.trial_ends_at)}</div>}
       </div>
       <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: 16 }}>
         <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".1em", color: T.muted, textTransform: "uppercase", marginBottom: 10 }}>Выдать доступ</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginBottom: 8 }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
           {["7", "14", "30", "90"].map(d => <button key={d} onClick={() => setGrantDays(d)}
-            style={{ padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${grantDays === d ? T.accent : T.border}`, background: grantDays === d ? T.accentBg : T.bg, color: grantDays === d ? T.accent : T.muted, cursor: "pointer", fontSize: 12, fontWeight: 500 }}>{d} дн.</button>)}
+            style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${grantDays===d?T.accent:T.border}`, background: grantDays===d?T.accentBg:T.bg, color: grantDays===d?T.accent:T.muted, cursor: "pointer", fontSize: 12, fontWeight: 500 }}>{d} дн.</button>)}
         </div>
-        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
           <input type="number" value={grantDays} onChange={e => setGrantDays(e.target.value)} min="1"
             style={{ flex: 1, background: T.bg, border: `1.5px solid ${T.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: T.text, outline: "none" }} />
           <span style={{ alignSelf: "center", fontSize: 12, color: T.muted }}>дней</span>
