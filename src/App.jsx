@@ -971,7 +971,7 @@ function Reminders({ reminders, setReminders }) {
 }
 
 // ─── Profile ────────────────────────────────────────────────────────
-function Profile({ profile, norms, onSave, onReset, access, tgId }) {
+function Profile({ profile, norms, onSave, onReset, access, tgId, onGranted }) {
   const [f,setF]=useState({...profile});
   const [copied,setCopied]=useState(false);
   const [refInfo,setRefInfo]=useState(false);
@@ -1023,7 +1023,12 @@ function Profile({ profile, norms, onSave, onReset, access, tgId }) {
       if(promoState?.ok&&promoCode) body.promo_code=promoCode.trim().toUpperCase();
       const r=await fetch("/api/payment/create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       const d=await r.json();
-      if(d.url){
+      if(d.granted){
+        // Промокод дал 100% скидку — доступ выдан без оплаты
+        setShowPlans(false); setShowPromo(false); setPromoCode(""); setPromoState(null);
+        alert(`✅ Доступ активирован на ${d.days} дней!`);
+        onGranted && onGranted();
+      } else if(d.url){
         window.Telegram?.WebApp?.openLink
           ? window.Telegram.WebApp.openLink(d.url)
           : window.location.assign(d.url);
@@ -1241,7 +1246,7 @@ function syncSave(tgId,data){
 }
 
 // ─── Paywall ───────────────────────────────────────────────────────
-function Paywall({ tgId }) {
+function Paywall({ tgId, onGranted }) {
   const [sel,setSel]=useState("quarterly");
   const [loading,setLoading]=useState(false);
   const [discount,setDiscount]=useState(false);
@@ -1292,7 +1297,11 @@ function Paywall({ tgId }) {
       if(promoState?.ok&&promoCode) body.promo_code=promoCode.trim().toUpperCase();
       const r=await fetch("/api/payment/create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       const d=await r.json();
-      if(d.url){
+      if(d.granted){
+        // 100% скидка — доступ выдан сразу
+        alert(`✅ Доступ активирован на ${d.days} дней!`);
+        onGranted && await onGranted();
+      } else if(d.url){
         if(d.has_discount) setDiscount(true);
         window.Telegram?.WebApp?.openLink
           ? window.Telegram.WebApp.openLink(d.url)
@@ -1422,6 +1431,15 @@ export default function App() {
   const [access,setAccess]=useState(null); // null=загрузка, {allowed,plan}
   const [tgId]=useState(()=>getTgId());
 
+  // Обновить статус подписки (используется после промокода и при возврате из оплаты)
+  const refreshAccess=useCallback(async()=>{
+    const id=getTgId(); if(!id)return;
+    try{
+      const r=await fetch(`/api/sync?telegram_id=${id}`);
+      if(r.ok){const d=await r.json();if(d?.access)setAccess(d.access);}
+    }catch{}
+  },[]);
+
   // Обновляем статус подписки когда пользователь возвращается в приложение после оплаты
   useEffect(()=>{
     const refresh=async()=>{
@@ -1498,7 +1516,7 @@ export default function App() {
   if(!profile) return <Onboarding onDone={p=>setProfile(p)}/>;
 
   // Показываем paywall только если точно знаем что доступ закончился
-  if(access&&!access.allowed) return <Paywall tgId={tgId}/>;
+  if(access&&!access.allowed) return <Paywall tgId={tgId} onGranted={refreshAccess}/>;
 
   return <div style={{minHeight:"100vh",background:T.bg,fontFamily:"'Manrope',sans-serif",paddingBottom:90,overflowX:"hidden",width:"100%"}}>
     <style>{CSS}</style>
@@ -1508,7 +1526,8 @@ export default function App() {
       {tab==="weight"&&<Weight weights={weights} setWeights={setWeights}/>}
       {tab==="profile"&&<Profile profile={profile} norms={norms} access={access} tgId={tgId}
         onSave={p=>{setProfile(p);setTab("today");}}
-        onReset={()=>{setProfile(null);setHistory({});setWeights([]);setReminders([]);}}/>}
+        onReset={()=>{setProfile(null);setHistory({});setWeights([]);setReminders([]);}}
+        onGranted={refreshAccess}/>}
     </div>
     {/* Bottom nav */}
     <div style={{position:"fixed",bottom:0,left:0,right:0,background:"rgba(249,248,246,.97)",backdropFilter:"blur(20px)",borderTop:`1px solid ${T.border}`,display:"flex",justifyContent:"center",paddingBottom:"env(safe-area-inset-bottom, 8px)"}}>

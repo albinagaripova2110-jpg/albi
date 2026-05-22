@@ -109,6 +109,46 @@ export default async function handler(req, res) {
     } catch {}
   }
 
+  // ── Если цена = 0 — выдаём доступ сразу, без Продамуса ─────────────
+  if (price <= 0) {
+    if (!supabaseUrl || !supabaseKey)
+      return res.status(500).json({ error: 'Server error' })
+
+    const daysToGrant = (promoRow?.bonus_days > 0 ? promoRow.bonus_days : null) || PLANS[plan].days
+    const now = new Date()
+
+    try {
+      const existingSubs = await fetch(
+        `${supabaseUrl}/rest/v1/subscriptions?user_id=eq.${telegram_id}&plan=eq.pro&order=expires_at.desc&limit=1`,
+        { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } }
+      ).then(r => r.json()).catch(() => [])
+
+      const existing = Array.isArray(existingSubs) && existingSubs.length > 0 ? existingSubs[0] : null
+      const base = existing && new Date(existing.expires_at) > now ? new Date(existing.expires_at) : now
+      const newExpiry = new Date(base.getTime() + daysToGrant * 24 * 60 * 60 * 1000).toISOString()
+
+      if (existing) {
+        await fetch(`${supabaseUrl}/rest/v1/subscriptions?id=eq.${existing.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ expires_at: newExpiry }),
+        })
+      } else {
+        await fetch(`${supabaseUrl}/rest/v1/subscriptions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}`, 'Prefer': 'return=minimal' },
+          body: JSON.stringify({ user_id: parseInt(telegram_id), plan: 'pro', starts_at: now.toISOString(), expires_at: newExpiry, granted_by_admin: false, price_paid: 0 }),
+        })
+      }
+      console.log(`Free promo grant: tg=${telegram_id} days=${daysToGrant} expires=${newExpiry}`)
+    } catch (e) {
+      console.error('Free promo grant error:', e)
+      return res.status(500).json({ error: 'Ошибка выдачи доступа' })
+    }
+
+    return res.status(200).json({ granted: true, days: daysToGrant })
+  }
+
   const orderId = `albi_${telegram_id}_${plan}_${Date.now()}`
 
   if (supabaseUrl && supabaseKey) {
