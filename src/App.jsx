@@ -986,16 +986,42 @@ function Profile({ profile, norms, onSave, onReset, access, tgId }) {
   const [payLoading,setPayLoading]=useState(false);
   const [showPlans,setShowPlans]=useState(false);
   const [selPlan,setSelPlan]=useState("quarterly");
+  const [showPromo,setShowPromo]=useState(false);
+  const [promoCode,setPromoCode]=useState("");
+  const [promoState,setPromoState]=useState(null);
+  const [promoLoading,setPromoLoading]=useState(false);
   const profilePlans=[
-    {id:"monthly",   label:"1 месяц",   price:"249 ₽",  sub:"249 ₽/мес", badge:null},
-    {id:"quarterly", label:"3 месяца",  price:"599 ₽",  sub:"200 ₽/мес", badge:"−20%"},
-    {id:"halfyear",  label:"6 месяцев", price:"1 099 ₽",sub:"183 ₽/мес", badge:"−27%"},
+    {id:"monthly",   label:"1 месяц",   price:249,  priceStr:"249 ₽",  sub:"249 ₽/мес", badge:null},
+    {id:"quarterly", label:"3 месяца",  price:599,  priceStr:"599 ₽",  sub:"200 ₽/мес", badge:"−20%"},
+    {id:"halfyear",  label:"6 месяцев", price:1099, priceStr:"1 099 ₽",sub:"183 ₽/мес", badge:"−27%"},
   ];
+  const applyProfilePromo=async()=>{
+    if(!promoCode.trim()) return;
+    setPromoLoading(true);
+    try{
+      const r=await fetch(`/api/payment/create?code=${encodeURIComponent(promoCode.trim().toUpperCase())}`);
+      const d=await r.json();
+      if(d.valid){
+        const label=d.discount_pct>0?`Скидка ${d.discount_pct}%`:`+${d.bonus_days} дней бесплатно`;
+        setPromoState({ok:true,label,discountPct:d.discount_pct||0,bonusDays:d.bonus_days||0});
+      } else {
+        setPromoState({ok:false,label:d.error||"Промокод не найден или истёк"});
+      }
+    }catch{ setPromoState({ok:false,label:"Ошибка проверки промокода"}); }
+    setPromoLoading(false);
+  };
+  const getProfilePrice=(plan)=>{
+    let p=plan.price;
+    if(promoState?.ok&&promoState.discountPct>0) p=Math.round(p*(1-promoState.discountPct/100));
+    return p;
+  };
   const openPayment = async (plan) => {
     if(!tgId){ window.Telegram?.WebApp?.openLink("https://t.me/AlbiScan_bot"); return; }
     setPayLoading(true);
     try{
-      const r=await fetch("/api/payment/create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({telegram_id:tgId,plan})});
+      const body={telegram_id:tgId,plan};
+      if(promoState?.ok&&promoCode) body.promo_code=promoCode.trim().toUpperCase();
+      const r=await fetch("/api/payment/create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       const d=await r.json();
       if(d.url){
         window.Telegram?.WebApp?.openLink
@@ -1043,8 +1069,10 @@ function Profile({ profile, norms, onSave, onReset, access, tgId }) {
       {/* Plan selector */}
       {showPlans&&<div style={{marginTop:12}}>
         <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:10}}>
-          {profilePlans.map(p=>(
-            <div key={p.id} onClick={()=>setSelPlan(p.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 14px",borderRadius:12,border:`2px solid ${selPlan===p.id?T.accent:T.border}`,background:selPlan===p.id?T.accentBg:T.bg,cursor:"pointer",transition:"all .2s"}}>
+          {profilePlans.map(p=>{
+            const price=getProfilePrice(p);
+            const hasDiscount=promoState?.ok&&price<p.price;
+            return <div key={p.id} onClick={()=>setSelPlan(p.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 14px",borderRadius:12,border:`2px solid ${selPlan===p.id?T.accent:T.border}`,background:selPlan===p.id?T.accentBg:T.bg,cursor:"pointer",transition:"all .2s"}}>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
                 <div style={{width:16,height:16,borderRadius:"50%",border:`2px solid ${selPlan===p.id?T.accent:T.borderMd}`,background:selPlan===p.id?T.accent:"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
                   {selPlan===p.id&&<div style={{width:6,height:6,borderRadius:"50%",background:"#fff"}}/>}
@@ -1056,11 +1084,40 @@ function Profile({ profile, norms, onSave, onReset, access, tgId }) {
               </div>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 {p.badge&&<span style={{background:T.greenBg,color:T.green,fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:50}}>{p.badge}</span>}
-                <span style={{fontSize:14,fontWeight:700,color:selPlan===p.id?T.accent:T.text}}>{p.price}</span>
+                <div style={{textAlign:"right"}}>
+                  {hasDiscount&&<div style={{fontSize:10,color:T.faint,textDecoration:"line-through"}}>{p.priceStr}</div>}
+                  <span style={{fontSize:14,fontWeight:700,color:selPlan===p.id?T.accent:T.text}}>{hasDiscount?`${price} ₽`:p.priceStr}</span>
+                </div>
               </div>
-            </div>
-          ))}
+            </div>;
+          })}
         </div>
+
+        {/* Промокод */}
+        {!showPromo
+          ? <button onClick={()=>setShowPromo(true)} style={{background:"none",border:"none",color:T.muted,fontSize:12,cursor:"pointer",marginBottom:10,padding:"2px 0",textDecoration:"underline",fontFamily:"Manrope"}}>
+              У меня есть промокод 🎁
+            </button>
+          : <div style={{marginBottom:10,background:T.bg,borderRadius:12,padding:"10px 12px",border:`1px solid ${promoState?.ok?T.green:promoState?.ok===false?T.red:T.border}`}}>
+              <div style={{fontSize:11,fontWeight:600,color:T.text,marginBottom:7}}>Промокод</div>
+              <div style={{display:"flex",gap:8}}>
+                <input value={promoCode} onChange={e=>{setPromoCode(e.target.value.toUpperCase());setPromoState(null);}}
+                  placeholder="ВВЕДИ КОД" disabled={promoState?.ok}
+                  style={{flex:1,border:`1.5px solid ${promoState?.ok?T.green:T.border}`,borderRadius:8,padding:"8px 10px",fontSize:13,fontWeight:600,letterSpacing:".08em",color:T.text,background:promoState?.ok?T.greenBg:T.surface,fontFamily:"Manrope"}}
+                />
+                {!promoState?.ok&&<button onClick={applyProfilePromo} disabled={promoLoading||!promoCode.trim()}
+                  style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"Manrope",flexShrink:0,opacity:promoLoading?.6:1}}>
+                  {promoLoading?"…":"Применить"}
+                </button>}
+                {promoState?.ok&&<button onClick={()=>{setPromoState(null);setPromoCode("");setShowPromo(false);}}
+                  style={{background:"none",border:`1.5px solid ${T.border}`,borderRadius:8,padding:"8px 10px",fontSize:12,color:T.muted,cursor:"pointer",fontFamily:"Manrope",flexShrink:0}}>✕</button>}
+              </div>
+              {promoState&&<div style={{marginTop:7,fontSize:12,fontWeight:600,color:promoState.ok?T.green:T.red}}>
+                {promoState.ok?`✓ ${promoState.label}`:`✕ ${promoState.label}`}
+              </div>}
+            </div>
+        }
+
         <button onClick={()=>{openPayment(selPlan);setShowPlans(false);}} disabled={payLoading}
           style={{width:"100%",background:T.accent,color:"#fff",border:"none",padding:"12px",borderRadius:50,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"Manrope",opacity:payLoading?.7:1}}>
           {payLoading?"Создаём платёж…":"Перейти к оплате →"}
