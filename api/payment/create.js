@@ -14,7 +14,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const { telegram_id, plan } = req.body
+  const { telegram_id, plan, promo_code } = req.body
   if (!telegram_id) return res.status(400).json({ error: 'telegram_id required' })
 
   const supabaseUrl = process.env.SUPABASE_URL
@@ -46,6 +46,29 @@ export default async function handler(req, res) {
   let price = PLANS[plan].price
   if (hasDiscount) price = Math.round(price * 0.9)
 
+  // Проверяем и применяем промокод
+  let promoRow = null
+  if (promo_code && supabaseUrl && supabaseKey) {
+    try {
+      const code = promo_code.toUpperCase().trim()
+      const promoRes = await fetch(
+        `${supabaseUrl}/rest/v1/promo_codes?code=eq.${encodeURIComponent(code)}&is_active=eq.true&select=*&limit=1`,
+        { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } }
+      )
+      const promoText = await promoRes.text()
+      const promoRows = JSON.parse(promoText)
+      if (Array.isArray(promoRows) && promoRows.length > 0) {
+        const p = promoRows[0]
+        const expired = p.expires_at && new Date(p.expires_at) < new Date()
+        const maxed = p.max_uses !== null && p.uses_count >= p.max_uses
+        if (!expired && !maxed) {
+          promoRow = p
+          if (p.discount_pct) price = Math.round(price * (1 - p.discount_pct / 100))
+        }
+      }
+    } catch {}
+  }
+
   const orderId = `albi_${telegram_id}_${plan}_${Date.now()}`
 
   // Сохраняем маппинг orderId → telegram_id + plan (на случай если Продамус не вернёт наш order_id)
@@ -62,6 +85,22 @@ export default async function handler(req, res) {
         body: JSON.stringify({ order_id: orderId, telegram_id: parseInt(telegram_id), plan, price, created_at: new Date().toISOString() })
       })
     } catch {}
+
+    // Увеличиваем счётчик использований промокода
+    if (promoRow) {
+      try {
+        await fetch(`${supabaseUrl}/rest/v1/promo_codes?id=eq.${promoRow.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': supabaseKey,
+            'Authorization': `Bearer ${supabaseKey}`,
+            'Prefer': 'return=minimal',
+          },
+          body: JSON.stringify({ uses_count: (promoRow.uses_count || 0) + 1 })
+        })
+      } catch {}
+    }
   }
 
   const params = {

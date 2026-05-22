@@ -35,7 +35,7 @@ input:focus,select:focus{outline:none;border-color:${T.accent}!important;box-sha
 .spin{animation:spin .9s linear infinite;display:inline-block;margin-right:6px}
 .tab{flex:1;background:none;border:none;color:${T.faint};padding:12px 0 10px;cursor:pointer;font-size:10px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;transition:color .2s;display:flex;flex-direction:column;align-items:center;gap:4px;font-family:'Manrope',sans-serif}
 .tab.on{color:${T.accent}}
-.tab .ico{font-size:18px;line-height:1}
+.tab .ico{line-height:1;display:flex;align-items:center;justify-content:center}
 .btn-pill{padding:7px 16px;border-radius:50px;border:1.5px solid ${T.borderMd};background:${T.surface};color:${T.muted};font-size:12px;font-weight:500;cursor:pointer;transition:all .2s;font-family:'Manrope',sans-serif;letter-spacing:.02em}
 .btn-pill.on{border-color:${T.accent};background:${T.accentBg};color:${T.accent}}
 .row-item{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid ${T.border};transition:background .15s}
@@ -1183,31 +1183,52 @@ function Paywall({ tgId }) {
   const [sel,setSel]=useState("quarterly");
   const [loading,setLoading]=useState(false);
   const [discount,setDiscount]=useState(false);
+  const [showPromo,setShowPromo]=useState(false);
+  const [promoCode,setPromoCode]=useState("");
+  const [promoState,setPromoState]=useState(null); // null | {ok,label,discountPct,bonusDays}
+  const [promoLoading,setPromoLoading]=useState(false);
   const plans=[
     {id:"monthly",   label:"1 месяц",   price:249,  priceStr:"249 ₽",   sub:"249 ₽/мес", badge:null   },
     {id:"quarterly", label:"3 месяца",  price:599,  priceStr:"599 ₽",   sub:"200 ₽/мес", badge:"−20%" },
     {id:"halfyear",  label:"6 месяцев", price:1290, priceStr:"1 290 ₽", sub:"215 ₽/мес", badge:"−14%" },
   ];
 
-  // Проверяем реферальную скидку при открытии экрана
   useEffect(()=>{
     if(!tgId) return;
-    fetch(`/api/sync?telegram_id=${tgId}`).then(r=>r.json()).then(d=>{
-      // Проверяем есть ли реферал — если да, покажем скидку
-      if(d?.access) return; // уже загружено через основной sync
-    }).catch(()=>{});
-    // Запрашиваем наличие реферала напрямую
     fetch("/api/payment/create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({telegram_id:tgId,plan:"check"})})
       .then(r=>r.json()).then(d=>{ if(d.has_discount) setDiscount(true); }).catch(()=>{});
   },[tgId]);
 
+  const applyPromo=async()=>{
+    if(!promoCode.trim()) return;
+    setPromoLoading(true);
+    try{
+      const r=await fetch(`/api/payment/apply-promo?code=${encodeURIComponent(promoCode.trim().toUpperCase())}`);
+      const d=await r.json();
+      if(d.valid){
+        const label=d.discount_pct>0?`Скидка ${d.discount_pct}%`:`+${d.bonus_days} дней бесплатно`;
+        setPromoState({ok:true,label,discountPct:d.discount_pct||0,bonusDays:d.bonus_days||0});
+      } else {
+        setPromoState({ok:false,label:d.error||"Промокод не найден или истёк"});
+      }
+    }catch{ setPromoState({ok:false,label:"Ошибка проверки промокода"}); }
+    setPromoLoading(false);
+  };
+
+  const getPrice=(plan)=>{
+    let p=plan.price;
+    if(discount) p=Math.round(p*0.9);
+    if(promoState?.ok&&promoState.discountPct>0) p=Math.round(p*(1-promoState.discountPct/100));
+    return p;
+  };
+
   const pay=async()=>{
-    if(!tgId){
-      window.open("https://t.me/AlbiScan_bot","_blank"); return;
-    }
+    if(!tgId){ window.open("https://t.me/AlbiScan_bot","_blank"); return; }
     setLoading(true);
     try{
-      const r=await fetch("/api/payment/create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({telegram_id:tgId,plan:sel})});
+      const body={telegram_id:tgId,plan:sel};
+      if(promoState?.ok&&promoCode) body.promo_code=promoCode.trim().toUpperCase();
+      const r=await fetch("/api/payment/create",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       const d=await r.json();
       if(d.url){
         if(d.has_discount) setDiscount(true);
@@ -1217,6 +1238,7 @@ function Paywall({ tgId }) {
     }catch(e){}
     setLoading(false);
   };
+
   return <div style={{minHeight:"100vh",background:T.bg,fontFamily:"'Manrope',sans-serif",display:"flex",flexDirection:"column",alignItems:"center",padding:"48px 20px 40px"}}>
     <style>{CSS}</style>
     <div style={{maxWidth:400,width:"100%"}}>
@@ -1230,13 +1252,15 @@ function Paywall({ tgId }) {
 
       <div style={{background:T.surface,borderRadius:16,padding:"14px 18px",marginBottom:22,border:`1px solid ${T.border}`}}>
         {["📸 Анализ фото блюд без ограничений","📊 История питания и динамика веса","🎯 Персональные нормы КБЖУ","🔄 Синхронизация на всех устройствах"].map(b=>(
-          <div key={b} style={{padding:"7px 0",fontSize:13,color:T.text,borderBottom:`1px solid ${T.border}`,lastChild:{border:"none"}}}>{b}</div>
+          <div key={b} style={{padding:"7px 0",fontSize:13,color:T.text,borderBottom:`1px solid ${T.border}`}}>{b}</div>
         ))}
       </div>
 
-      <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
-        {plans.map(p=>(
-          <div key={p.id} onClick={()=>setSel(p.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"13px 16px",borderRadius:14,border:`2px solid ${sel===p.id?T.accent:T.border}`,background:sel===p.id?T.accentBg:T.surface,cursor:"pointer",transition:"all .2s"}}>
+      <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
+        {plans.map(p=>{
+          const price=getPrice(p);
+          const hasAnyDiscount=(discount||promoState?.ok)&&price<p.price;
+          return <div key={p.id} onClick={()=>setSel(p.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"13px 16px",borderRadius:14,border:`2px solid ${sel===p.id?T.accent:T.border}`,background:sel===p.id?T.accentBg:T.surface,cursor:"pointer",transition:"all .2s"}}>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               <div style={{width:18,height:18,borderRadius:"50%",border:`2px solid ${sel===p.id?T.accent:T.borderMd}`,background:sel===p.id?T.accent:"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
                 {sel===p.id&&<div style={{width:7,height:7,borderRadius:"50%",background:"#fff"}}/>}
@@ -1249,15 +1273,39 @@ function Paywall({ tgId }) {
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               {p.badge&&<span style={{background:T.greenBg,color:T.green,fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:50}}>{p.badge}</span>}
               <div style={{textAlign:"right"}}>
-                {discount&&sel===p.id&&<div style={{fontSize:10,color:T.faint,textDecoration:"line-through"}}>{p.priceStr}</div>}
-                <div style={{fontSize:16,fontWeight:700,color:sel===p.id?T.accent:T.text}}>
-                  {discount&&sel===p.id?`${Math.round(p.price*0.9)} ₽`:p.priceStr}
-                </div>
+                {hasAnyDiscount&&<div style={{fontSize:10,color:T.faint,textDecoration:"line-through"}}>{p.priceStr}</div>}
+                <div style={{fontSize:16,fontWeight:700,color:sel===p.id?T.accent:T.text}}>{hasAnyDiscount?`${price} ₽`:p.priceStr}</div>
               </div>
             </div>
-          </div>
-        ))}
+          </div>;
+        })}
       </div>
+
+      {/* Промокод */}
+      {!showPromo
+        ? <button onClick={()=>setShowPromo(true)} style={{background:"none",border:"none",color:T.muted,fontSize:12,cursor:"pointer",marginBottom:14,padding:"4px 0",textDecoration:"underline",fontFamily:"Manrope"}}>
+            У меня есть промокод 🎁
+          </button>
+        : <div style={{marginBottom:14,background:T.surface,borderRadius:12,padding:"12px 14px",border:`1px solid ${promoState?.ok?T.green:promoState?.ok===false?T.red:T.border}`}}>
+            <div style={{fontSize:12,fontWeight:600,color:T.text,marginBottom:8}}>Промокод</div>
+            <div style={{display:"flex",gap:8}}>
+              <input
+                value={promoCode} onChange={e=>{ setPromoCode(e.target.value.toUpperCase()); setPromoState(null); }}
+                placeholder="ВВЕДИ КОД" disabled={promoState?.ok}
+                style={{flex:1,border:`1.5px solid ${promoState?.ok?T.green:T.border}`,borderRadius:8,padding:"9px 12px",fontSize:13,fontWeight:600,letterSpacing:".08em",color:T.text,background:promoState?.ok?T.greenBg:T.surface,fontFamily:"Manrope"}}
+              />
+              {!promoState?.ok&&<button onClick={applyPromo} disabled={promoLoading||!promoCode.trim()}
+                style={{background:T.accent,color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"Manrope",flexShrink:0,opacity:promoLoading?.6:1}}>
+                {promoLoading?"…":"Применить"}
+              </button>}
+              {promoState?.ok&&<button onClick={()=>{setPromoState(null);setPromoCode("");}}
+                style={{background:"none",border:`1.5px solid ${T.border}`,borderRadius:8,padding:"9px 12px",fontSize:12,color:T.muted,cursor:"pointer",fontFamily:"Manrope",flexShrink:0}}>✕</button>}
+            </div>
+            {promoState&&<div style={{marginTop:8,fontSize:12,fontWeight:600,color:promoState.ok?T.green:T.red}}>
+              {promoState.ok?`✓ ${promoState.label}`:`✕ ${promoState.label}`}
+            </div>}
+          </div>
+      }
 
       <button onClick={pay} disabled={loading} style={{width:"100%",background:T.accent,color:"#fff",border:"none",padding:"15px",borderRadius:50,fontSize:15,fontWeight:600,cursor:"pointer",fontFamily:"Manrope",marginBottom:10,opacity:loading?.7:1}}>
         {loading?"Создаём платёж…":"Оформить подписку →"}
@@ -1269,8 +1317,33 @@ function Paywall({ tgId }) {
   </div>
 }
 
+// ─── Nav icons ─────────────────────────────────────────────────────
+const IcoToday=()=><svg width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+  <line x1="7" y1="2" x2="7" y2="18"/>
+  <path d="M5 2v4a2 2 0 0 0 4 0V2"/>
+  <path d="M13 2c0 0 3 1.2 3 5H13v11"/>
+</svg>
+
+const IcoHistory=()=><svg width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+  <line x1="2" y1="17.5" x2="18" y2="17.5"/>
+  <rect x="3" y="11" width="3" height="6.5" rx="0.5"/>
+  <rect x="8.5" y="6" width="3" height="11.5" rx="0.5"/>
+  <rect x="14" y="2" width="3" height="15.5" rx="0.5"/>
+</svg>
+
+const IcoWeight=()=><svg width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+  <rect x="2" y="10" width="16" height="8" rx="3"/>
+  <path d="M6 10 Q10 3.5 14 10"/>
+  <line x1="10" y1="10" x2="12.7" y2="6.3"/>
+</svg>
+
+const IcoProfile=()=><svg width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+  <circle cx="10" cy="6.5" r="3.5"/>
+  <path d="M3 19c0-3.9 3.1-7 7-7s7 3.1 7 7"/>
+</svg>
+
 // ─── Root ──────────────────────────────────────────────────────────
-const TABS=[{id:"today",ico:"🍽",l:"Сегодня"},{id:"history",ico:"📊",l:"История"},{id:"weight",ico:"⚖",l:"Вес"},{id:"profile",ico:"◎",l:"Профиль"}];
+const TABS=[{id:"today",Ico:IcoToday,l:"Сегодня"},{id:"history",Ico:IcoHistory,l:"История"},{id:"weight",Ico:IcoWeight,l:"Вес"},{id:"profile",Ico:IcoProfile,l:"Профиль"}];
 
 export default function App() {
   const [ready,setReady]=useState(false);
@@ -1357,7 +1430,7 @@ export default function App() {
       <div style={{display:"flex",width:"100%",maxWidth:460}}>
         {TABS.map(t=>(
           <button key={t.id} className={`tab${tab===t.id?" on":""}`} onClick={()=>setTab(t.id)}>
-            <span className="ico">{t.ico}</span>{t.l}
+            <span className="ico"><t.Ico/></span>{t.l}
           </button>
         ))}
       </div>
