@@ -66,14 +66,17 @@ async function parseAIResponse(res) {
   const raw = await res.text();
   if(!res.ok) {
     let errData; try{errData=JSON.parse(raw);}catch{}
-    if(errData?.error==="limit_reached") throw new Error(`🔒 ${errData.message}`);
-    throw new Error(`HTTP ${res.status}: ${raw.slice(0,300)}`);
+    if(errData?.error==="limit_reached"||errData?.error==="trial_expired")
+      throw new Error(`🔒 ${errData.message||"Пробный период закончился. Оформи подписку."}`);
+    if(res.status===429) throw new Error("Слишком много запросов, попробуй через минуту");
+    if(res.status>=500) throw new Error("Сервер временно недоступен, попробуй ещё раз");
+    throw new Error(errData?.error||errData?.message||`Ошибка ${res.status}`);
   }
-  let data; try{data=JSON.parse(raw);}catch{throw new Error(`Не JSON: ${raw.slice(0,200)}`);}
+  let data; try{data=JSON.parse(raw);}catch{throw new Error("Неверный ответ сервера");}
   const text=(data.content||[]).map(b=>b.type==="text"?b.text:"").join("");
-  if(!text) throw new Error(`Нет текста: ${JSON.stringify(data).slice(0,200)}`);
+  if(!text) throw new Error("ИИ не вернул результат, попробуй ещё раз");
   const clean=text.replace(/```json\s*/g,"").replace(/```/g,"").trim();
-  try{return JSON.parse(clean);}catch{throw new Error(`Модель: ${clean.slice(0,200)}`);}
+  try{return JSON.parse(clean);}catch{throw new Error("Не удалось разобрать ответ ИИ");}
 }
 
 function getTgHeaders() {
@@ -377,8 +380,18 @@ function Today({ profile, norms, day, setDay, selectedDate, onSelectDate, histor
 
   const analyze=async()=>{
     setLoading(true);setErr(null);
-    try{const res=await analyzeFood(b64,mt,portionHints[portion],cookMethod?cookOpts.find(o=>o.k===cookMethod)?.l:null,manualMode&&manualCals?+manualCals:null);setPreview({result:res,img});setImg(null);setCookMethod(null);setManualCals('');setManualMode(false);}
-    catch(e){setErr(e.message);}finally{setLoading(false);}
+    try{
+      const res=await analyzeFood(b64,mt,portionHints[portion],cookMethod?cookOpts.find(o=>o.k===cookMethod)?.l:null,manualMode&&manualCals?+manualCals:null);
+      setPreview({result:res,img});setImg(null);setCookMethod(null);setManualCals('');setManualMode(false);
+    }catch(e){
+      // Сетевая ошибка (нет интернета, iOS Safari бросает TypeError "Load failed" / "Type error")
+      const msg=e.message||"";
+      if(e instanceof TypeError||msg==="Type error"||msg.includes("Load failed")||msg.includes("Failed to fetch")||msg.includes("NetworkError")){
+        setErr("Нет соединения с сервером. Проверь интернет и попробуй ещё раз.");
+      } else {
+        setErr(msg||"Произошла ошибка, попробуй ещё раз");
+      }
+    }finally{setLoading(false);}
   };
   const addMeal=()=>{
     if(!preview)return;
@@ -544,7 +557,7 @@ function Today({ profile, norms, day, setDay, selectedDate, onSelectDate, histor
             placeholder="Например: тарелка борща со сметаной и кусок чёрного хлеба"
             style={{width:"100%",background:T.surface,border:`1.5px solid ${T.border}`,borderRadius:10,padding:"11px 14px",fontSize:13,color:T.text,fontFamily:"Manrope",resize:"none",minHeight:80,boxSizing:"border-box"}}/>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}>
-            <button onClick={async()=>{if(!textInput.trim())return;setLoading(true);setErr(null);try{const res=await analyzeText(textInput);setPreview({result:res,img:null});setTextInput("");}catch(e){setErr(e.message);}finally{setLoading(false);}}}
+            <button onClick={async()=>{if(!textInput.trim())return;setLoading(true);setErr(null);try{const res=await analyzeText(textInput);setPreview({result:res,img:null});setTextInput("");}catch(e){const m=e.message||"";setErr(e instanceof TypeError||m.includes("Load failed")||m.includes("Failed to fetch")?"Нет соединения с сервером. Проверь интернет.":m||"Ошибка, попробуй ещё раз");}finally{setLoading(false);}}}
               disabled={!textInput.trim()||loading}
               style={{background:loading?T.faint:T.blue,color:"#fff",border:"none",padding:"12px",borderRadius:50,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"Manrope"}}>
               {loading?<><span className="spin">○</span>Считаю…</>:"Посчитать →"}
