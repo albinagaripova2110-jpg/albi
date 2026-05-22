@@ -675,23 +675,23 @@ export default function Admin() {
   const [input, setInput] = useState("")
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [err, setErr] = useState(null)
   const [tab, setTab] = useState("dashboard")
 
-  async function load(s) {
-    setLoading(true); setErr(null)
+  async function load(s, silent = false) {
+    if (silent) setRefreshing(true); else { setLoading(true); setErr(null) }
     const res = await api("/api/admin", {}, s)
-    if (res.error === "Unauthorized") { setErr("Неверный пароль"); setLoading(false); return }
-    if (res.error) { setErr(res.error); setLoading(false); return }
+    if (res.error === "Unauthorized") { setErr("Неверный пароль"); setLoading(false); setRefreshing(false); return }
+    if (res.error) { setErr(res.error); setLoading(false); setRefreshing(false); return }
 
     // Load subscriptions separately
-    const subsRes = await api("/api/admin?include=subscriptions", {}, s)
     const allSubs = await fetch("/api/admin/subs-list", { headers: { "X-Admin-Secret": s } }).then(r => r.json()).catch(() => [])
 
     setData({ ...res, subscriptions: Array.isArray(allSubs) ? allSubs : [] })
     setSecret(s)
     localStorage.setItem(SECRET_KEY, s)
-    setLoading(false)
+    if (silent) setRefreshing(false); else setLoading(false)
   }
 
   useEffect(() => { if (secret) load(secret) }, [])
@@ -717,7 +717,7 @@ export default function Admin() {
 
   return (
     <div style={{ minHeight: "100vh", background: T.bg, fontFamily: "Manrope" }}>
-      <style>{`*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Manrope',sans-serif}input,button,textarea{font-family:'Manrope',sans-serif}input:focus{outline:none}`}</style>
+      <style>{`*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Manrope',sans-serif}input,button,textarea{font-family:'Manrope',sans-serif}input:focus{outline:none}@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       {/* Header */}
       <div style={{ background: T.surface, borderBottom: `1px solid ${T.border}`, padding: "0 24px" }}>
         <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", height: 56 }}>
@@ -729,8 +729,13 @@ export default function Admin() {
                 {t.ico} {t.label}
               </button>
             ))}
+            <button onClick={() => load(secret, true)} disabled={refreshing}
+              style={{ padding: "6px 14px", borderRadius: 50, border: `1.5px solid ${T.border}`, background: "transparent", color: refreshing ? T.faint : T.accent, cursor: "pointer", fontSize: 12, marginLeft: 8, display: "flex", alignItems: "center", gap: 5 }}>
+              <span style={{ display: "inline-block", animation: refreshing ? "spin .8s linear infinite" : "none" }}>↻</span>
+              {refreshing ? "Обновляю…" : "Обновить"}
+            </button>
             <button onClick={() => { localStorage.removeItem(SECRET_KEY); setSecret(""); setData(null); setInput("") }}
-              style={{ padding: "6px 14px", borderRadius: 50, border: `1.5px solid ${T.border}`, background: "transparent", color: T.muted, cursor: "pointer", fontSize: 12, marginLeft: 8 }}>
+              style={{ padding: "6px 14px", borderRadius: 50, border: `1.5px solid ${T.border}`, background: "transparent", color: T.muted, cursor: "pointer", fontSize: 12, marginLeft: 4 }}>
               Выйти
             </button>
           </div>
@@ -740,7 +745,7 @@ export default function Admin() {
       {/* Content */}
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px" }}>
         {tab === "dashboard" && <DashboardTab data={data} />}
-        {tab === "users" && <UsersTab data={data} secret={secret} onRefresh={() => load(secret)} />}
+        {tab === "users" && <UsersTab data={data} secret={secret} onRefresh={() => load(secret, true)} />}
         {tab === "payments" && <PaymentsTab secret={secret} />}
         {tab === "subscriptions" && <SubscriptionsTab data={data} />}
         {tab === "promo" && <PromoTab secret={secret} />}
