@@ -372,6 +372,12 @@ function PromoTab({ secret }) {
     load()
   }
 
+  const remove = async (id, code) => {
+    if (!window.confirm(`Удалить промокод ${code}?`)) return
+    await api("/api/admin/promo", { method: "DELETE", body: JSON.stringify({ id }) }, secret)
+    load()
+  }
+
   return <div style={{ display: "grid", gap: 16 }}>
     <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 16, padding: 20 }}>
       <div style={{ fontSize: 13, fontWeight: 600, color: T.text, marginBottom: 14 }}>Создать промокод</div>
@@ -396,7 +402,7 @@ function PromoTab({ secret }) {
       <div style={{ padding: "14px 20px", borderBottom: `1px solid ${T.border}`, fontSize: 11, fontWeight: 600, letterSpacing: ".12em", color: T.muted, textTransform: "uppercase" }}>Промокоды · {promos.length}</div>
       {loading && <div style={{ padding: 30, textAlign: "center", color: T.faint, fontSize: 13 }}>Загрузка…</div>}
       {!loading && !promos.length && <div style={{ padding: 30, textAlign: "center", color: T.faint, fontSize: 13 }}>Промокодов пока нет</div>}
-      {promos.map((p, i) => <div key={p.id} style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 12, padding: "12px 20px", borderBottom: i < promos.length - 1 ? `1px solid ${T.border}` : "none", alignItems: "center" }}>
+      {promos.map((p, i) => <div key={p.id} style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto", gap: 10, padding: "12px 20px", borderBottom: i < promos.length - 1 ? `1px solid ${T.border}` : "none", alignItems: "center" }}>
         <div>
           <span style={{ fontSize: 14, fontWeight: 700, color: T.accent, fontFamily: "monospace" }}>{p.code}</span>
           <div style={{ fontSize: 11, color: T.muted, marginTop: 3 }}>
@@ -414,6 +420,9 @@ function PromoTab({ secret }) {
           style={{ padding: "5px 14px", borderRadius: 50, border: `1.5px solid ${p.is_active ? T.green : T.border}`, background: p.is_active ? T.greenBg : T.bg, color: p.is_active ? T.green : T.muted, cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
           {p.is_active ? "Активен" : "Выкл"}
         </button>
+        <button onClick={() => remove(p.id, p.code)}
+          style={{ padding: "5px 10px", borderRadius: 50, border: `1.5px solid ${T.border}`, background: T.bg, color: T.red, cursor: "pointer", fontSize: 13, lineHeight: 1 }}
+          title="Удалить">✕</button>
       </div>)}
     </div>
   </div>
