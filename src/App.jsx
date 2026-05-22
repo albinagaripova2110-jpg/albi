@@ -645,16 +645,14 @@ function Today({ profile, norms, day, setDay, selectedDate, onSelectDate, histor
             <img src={preview.img} style={{width:"100%",objectFit:"cover",display:"block",maxHeight:180}}/>
           </div>}
 
-          {/* Калории */}
-          <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between",marginBottom:4}}>
-            <div>
-              <div style={{fontSize:10,fontWeight:600,letterSpacing:".12em",color:T.muted,marginBottom:2}}>КАЛОРИИ</div>
-              <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:52,fontWeight:300,color:T.accent,lineHeight:1}}>{scaled.calories}</div>
-            </div>
-            <div style={{textAlign:"right",paddingBottom:6}}>
-              <div style={{fontSize:12,color:T.muted}}>Б <b style={{color:T.text}}>{scaled.protein}</b></div>
-              <div style={{fontSize:12,color:T.muted}}>Ж <b style={{color:T.text}}>{scaled.fat}</b></div>
-              <div style={{fontSize:12,color:T.muted}}>У <b style={{color:T.text}}>{scaled.carbs}</b></div>
+          {/* Калории + макросы */}
+          <div style={{background:T.accentBg,borderRadius:14,padding:"12px 14px",marginBottom:12}}>
+            <div style={{fontSize:10,fontWeight:600,letterSpacing:".12em",color:T.muted,marginBottom:2}}>КАЛОРИИ</div>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:52,fontWeight:300,color:T.accent,lineHeight:1,marginBottom:8}}>{scaled.calories}</div>
+            <div style={{display:"flex",gap:16}}>
+              <div style={{fontSize:12,color:T.muted}}>Белки <b style={{color:T.text,fontSize:13}}>{scaled.protein}г</b></div>
+              <div style={{fontSize:12,color:T.muted}}>Жиры <b style={{color:T.text,fontSize:13}}>{scaled.fat}г</b></div>
+              <div style={{fontSize:12,color:T.muted}}>Углеводы <b style={{color:T.text,fontSize:13}}>{scaled.carbs}г</b></div>
             </div>
           </div>
 
