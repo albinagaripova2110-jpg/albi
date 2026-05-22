@@ -124,18 +124,36 @@ export default async function handler(req, res) {
     }
 
     const now = new Date()
-    const newExpiry = new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString()
 
-    await db('subscriptions', supabaseUrl, supabaseKey, {
-      method: 'POST',
-      headers: { 'Prefer': 'resolution=merge-duplicates' },
-      body: JSON.stringify({
-        user_id: telegramId, plan: 'pro',
-        starts_at: now.toISOString(), expires_at: newExpiry,
-        granted_by_admin: false,
-        price_paid: Math.round(parseFloat(data.sum || 0) * 100),
-      }),
-    })
+    // Ищем существующую подписку чтобы продлить от её конца, а не от сегодня
+    const existingSubs = await db(
+      `subscriptions?user_id=eq.${telegramId}&plan=eq.pro&order=expires_at.desc&limit=1`,
+      supabaseUrl, supabaseKey, { method: 'GET' }
+    )
+    const existing = Array.isArray(existingSubs) && existingSubs.length > 0 ? existingSubs[0] : null
+    const base = existing && new Date(existing.expires_at) > now ? new Date(existing.expires_at) : now
+    const newExpiry = new Date(base.getTime() + days * 24 * 60 * 60 * 1000).toISOString()
+
+    if (existing) {
+      // Продлеваем существующую
+      await db(`subscriptions?id=eq.${existing.id}`, supabaseUrl, supabaseKey, {
+        method: 'PATCH',
+        headers: { 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ expires_at: newExpiry, price_paid: Math.round(parseFloat(data.sum || 0) * 100) }),
+      })
+    } else {
+      // Создаём новую
+      await db('subscriptions', supabaseUrl, supabaseKey, {
+        method: 'POST',
+        headers: { 'Prefer': 'resolution=merge-duplicates' },
+        body: JSON.stringify({
+          user_id: telegramId, plan: 'pro',
+          starts_at: now.toISOString(), expires_at: newExpiry,
+          granted_by_admin: false,
+          price_paid: Math.round(parseFloat(data.sum || 0) * 100),
+        }),
+      })
+    }
 
     let userName = ''
     const userRow = await db(`users?telegram_id=eq.${telegramId}&select=name&limit=1`, supabaseUrl, supabaseKey, { method: 'GET' })

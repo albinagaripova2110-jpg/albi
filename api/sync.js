@@ -47,15 +47,16 @@ export default async function handler(req, res) {
     const trialEndsAt = Array.isArray(userInfo) && userInfo[0]?.trial_ends_at
     const trialActive = trialEndsAt && new Date(trialEndsAt) > now
 
-    // Проверяем активную подписку
+    // Проверяем активную подписку — берём самую позднюю
     const subs = await supabaseRequest(
-      `${supabaseUrl}/rest/v1/subscriptions?user_id=eq.${telegram_id}&plan=eq.pro&expires_at=gte.${now.toISOString()}&select=expires_at&limit=1`,
+      `${supabaseUrl}/rest/v1/subscriptions?user_id=eq.${telegram_id}&plan=eq.pro&select=expires_at&order=expires_at.desc&limit=1`,
       { method: 'GET' },
       supabaseKey
     )
-    const hasSubscription = Array.isArray(subs) && subs.length > 0
+    const latestSub = Array.isArray(subs) && subs.length > 0 ? subs[0] : null
+    const hasSubscription = latestSub && new Date(latestSub.expires_at) > now
 
-    const subEndsAt = hasSubscription ? subs[0].expires_at : null
+    const subEndsAt = latestSub ? latestSub.expires_at : null
 
     const access = {
       allowed: trialActive || hasSubscription,
