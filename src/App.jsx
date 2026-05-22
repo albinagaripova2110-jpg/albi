@@ -89,12 +89,13 @@ function getTgHeaders() {
 async function analyzeFood(base64, mediaType, portionHint, cookMethod, manualCals) {
   const cookNote = cookMethod ? `Способ приготовления: ${cookMethod}. Учти масло/жир если жарка.` : "";
   const manualNote = manualCals ? `Пользователь знает точную калорийность: ${manualCals} ккал — используй именно это число для total.calories, только разбей по БЖУ пропорционально.` : "";
+  const portionNote = portionHint ? `Ориентировочный размер порции: ${portionHint}.` : "Самостоятельно оцени вес блюда по визуальным признакам: размеру тарелки, объёму, типу блюда. Укажи реалистичный вес в поле weight для каждого блюда.";
   const res = await fetch("/api/analyze", {
     method:"POST", headers:getTgHeaders(),
     body:JSON.stringify({ model:"gpt-4o-mini", max_tokens:1000,
       messages:[{role:"user",content:[
         {type:"image",source:{type:"base64",media_type:mediaType,data:base64}},
-        {type:"text",text:`Ты опытный диетолог-нутрициолог. Оцени еду на фото максимально точно.\nРазмер порции: ${portionHint}.\n${cookNote}\n${manualNote}${DIET_PROMPT_SUFFIX}`}
+        {type:"text",text:`Ты опытный диетолог-нутрициолог. Оцени еду на фото максимально точно.\n${portionNote}\n${cookNote}\n${manualNote}${DIET_PROMPT_SUFFIX}`}
       ]}]
     })
   });
@@ -318,7 +319,6 @@ function Today({ profile, norms, day, setDay, selectedDate, onSelectDate, histor
   const [img,setImg]=useState(null);
   const [b64,setB64]=useState(null);
   const [mt,setMt]=useState(null);
-  const [portion,setPortion]=useState("standard");
   const [cookMethod,setCookMethod]=useState(null);
   const [manualMode,setManualMode]=useState(false);
   const [textMode,setTextMode]=useState(false);
@@ -327,6 +327,7 @@ function Today({ profile, norms, day, setDay, selectedDate, onSelectDate, histor
   const [loading,setLoading]=useState(false);
   const [err,setErr]=useState(null);
   const [preview,setPreview]=useState(null);
+  const [previewWeight,setPreviewWeight]=useState(""); // редактируемый вес результата
   const [editIdx,setEditIdx]=useState(null);
   const [editMeal,setEditMeal]=useState(null);
   const fileRef=useRef();
@@ -340,13 +341,14 @@ function Today({ profile, norms, day, setDay, selectedDate, onSelectDate, histor
     {k:"unknown",  ico:"🤷", l:"Не знаю",          d:"ИИ попробует угадать"},
   ];
 
-  const portionOpts=[
-    {k:"small",l:"Маленькая",s:"~150г"},
-    {k:"standard",l:"Стандартная",s:"~250г"},
-    {k:"large",l:"Большая",s:"~400г"},
-    {k:"xl",l:"Большая",s:"~600г+"},
-  ];
-  const portionHints={small:"небольшая порция ~150г",standard:"стандартная порция ~250г",large:"большая порция ~400г",xl:"очень большая ~600г+"};
+  // Парсим суммарный вес из dishes (поле weight типа "300г" или "150 г")
+  const parseTotalWeight=(dishes)=>{
+    if(!Array.isArray(dishes)) return 0;
+    return dishes.reduce((s,d)=>{
+      const n=parseFloat(String(d.weight||"").replace(/[^\d.]/g,""))||0;
+      return s+n;
+    },0);
+  };
 
   const meals=day.meals||[];
   const water=day.water||0;
@@ -381,8 +383,11 @@ function Today({ profile, norms, day, setDay, selectedDate, onSelectDate, histor
   const analyze=async()=>{
     setLoading(true);setErr(null);
     try{
-      const res=await analyzeFood(b64,mt,portionHints[portion],cookMethod?cookOpts.find(o=>o.k===cookMethod)?.l:null,manualMode&&manualCals?+manualCals:null);
-      setPreview({result:res,img});setImg(null);setCookMethod(null);setManualCals('');setManualMode(false);
+      const res=await analyzeFood(b64,mt,null,cookMethod?cookOpts.find(o=>o.k===cookMethod)?.l:null,manualMode&&manualCals?+manualCals:null);
+      const initW=parseTotalWeight(res.dishes);
+      setPreview({result:res,img,baseWeight:initW||0,baseResult:JSON.parse(JSON.stringify(res))});
+      setPreviewWeight(initW>0?String(Math.round(initW)):"");
+      setImg(null);setCookMethod(null);setManualCals('');setManualMode(false);
     }catch(e){
       // Сетевая ошибка (нет интернета, iOS Safari бросает TypeError "Load failed" / "Type error")
       const msg=e.message||"";
@@ -392,11 +397,6 @@ function Today({ profile, norms, day, setDay, selectedDate, onSelectDate, histor
         setErr(msg||"Произошла ошибка, попробуй ещё раз");
       }
     }finally{setLoading(false);}
-  };
-  const addMeal=()=>{
-    if(!preview)return;
-    setDay(d=>({...d,meals:[...(d.meals||[]),{...preview.result,img:preview.img,time:new Date().toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"})}]}));
-    setPreview(null);
   };
   const removeMeal=(i)=>setDay(d=>({...d,meals:(d.meals||[]).filter((_,j)=>j!==i)}));
   const openEdit=(i)=>{setEditIdx(i);setEditMeal(JSON.parse(JSON.stringify(meals[i])));};
@@ -594,19 +594,6 @@ function Today({ profile, norms, day, setDay, selectedDate, onSelectDate, histor
           <img src={img} style={{width:"100%",maxHeight:220,objectFit:"cover",display:"block"}}/>
           <button onClick={()=>{setImg(null);setB64(null);}} style={{position:"absolute",top:10,right:10,background:"rgba(255,255,255,.9)",border:"none",borderRadius:20,padding:"5px 12px",cursor:"pointer",fontSize:12,color:T.text,fontWeight:500}}>✕ Убрать</button>
         </div>
-        <SectionLabel>Размер порции</SectionLabel>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
-          {portionOpts.map(o=>(
-            <button key={o.k} className={`portion-opt${portion===o.k?" on":""}`} onClick={()=>setPortion(o.k)}>
-              <div style={{fontWeight:600}}>{o.l}</div>
-              <div style={{fontSize:11,opacity:.7,marginTop:2}}>{o.s}</div>
-            </button>
-          ))}
-        </div>
-        <div style={{fontSize:11,color:T.faint,marginBottom:14,lineHeight:1.6,padding:"10px 12px",background:T.bg,borderRadius:10}}>
-          💡 Размер помогает ИИ оценить граммовку — по фото масштаб тарелки не виден
-        </div>
-
         <SectionLabel>Способ приготовления</SectionLabel>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
           {cookOpts.map(o=>(
@@ -639,35 +626,89 @@ function Today({ profile, norms, day, setDay, selectedDate, onSelectDate, histor
         </button>
       </div>}
       {err&&<div style={{marginTop:12,padding:12,background:"#fdf2f2",border:"1px solid #f5d0cc",borderRadius:10,color:"#c04040",fontSize:12,lineHeight:1.6,wordBreak:"break-all"}}>{err}</div>}
-      {preview&&<div className="up">
-        <div style={{display:"flex",gap:14,marginBottom:14,padding:"14px",background:T.accentBg,borderRadius:14}}>
-          <img src={preview.img} style={{width:72,height:72,borderRadius:10,objectFit:"cover",flexShrink:0}}/>
-          <div>
-            <div style={{fontSize:10,fontWeight:600,letterSpacing:".12em",color:T.muted,marginBottom:4}}>ИТОГО КАЛОРИЙ</div>
-            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:44,fontWeight:300,color:T.accent,lineHeight:1}}>{preview.result.total.calories}</div>
-            <div style={{fontSize:11,color:T.muted,marginTop:4}}>Б{preview.result.total.protein} · Ж{preview.result.total.fat} · У{preview.result.total.carbs}</div>
+      {preview&&(()=>{
+        // Пересчёт калорий на основе текущего веса
+        const newW=parseFloat(previewWeight)||0;
+        const baseW=preview.baseWeight||0;
+        const ratio=baseW>0&&newW>0?newW/baseW:1;
+        const base=preview.baseResult;
+        const scaled={
+          calories:Math.round(base.total.calories*ratio),
+          protein:Math.round(base.total.protein*ratio),
+          fat:Math.round(base.total.fat*ratio),
+          carbs:Math.round(base.total.carbs*ratio),
+        };
+        const scaledDishes=(base.dishes||[]).map(d=>({...d,calories:Math.round(d.calories*ratio)}));
+        return <div className="up">
+          {/* Картинка */}
+          {preview.img&&<div style={{borderRadius:14,overflow:"hidden",marginBottom:14,maxHeight:180}}>
+            <img src={preview.img} style={{width:"100%",objectFit:"cover",display:"block",maxHeight:180}}/>
+          </div>}
+
+          {/* Калории */}
+          <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between",marginBottom:4}}>
+            <div>
+              <div style={{fontSize:10,fontWeight:600,letterSpacing:".12em",color:T.muted,marginBottom:2}}>КАЛОРИИ</div>
+              <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:52,fontWeight:300,color:T.accent,lineHeight:1}}>{scaled.calories}</div>
+            </div>
+            <div style={{textAlign:"right",paddingBottom:6}}>
+              <div style={{fontSize:12,color:T.muted}}>Б <b style={{color:T.text}}>{scaled.protein}</b></div>
+              <div style={{fontSize:12,color:T.muted}}>Ж <b style={{color:T.text}}>{scaled.fat}</b></div>
+              <div style={{fontSize:12,color:T.muted}}>У <b style={{color:T.text}}>{scaled.carbs}</b></div>
+            </div>
           </div>
-        </div>
-        {preview.result.dishes.map((d,i)=>(
-          <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"9px 0",borderBottom:`1px solid ${T.border}`,fontSize:13}}>
-            <span style={{color:T.muted}}>{d.name} <span style={{fontSize:11,color:T.faint}}>≈{d.weight}</span></span>
-            <span style={{fontWeight:600,color:T.text}}>{d.calories}</span>
+
+          {/* Редактор веса */}
+          <div style={{background:T.bg,borderRadius:12,padding:"10px 14px",marginBottom:12,border:`1px solid ${T.border}`}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+              <div style={{fontSize:12,fontWeight:600,color:T.text}}>Общий вес порции</div>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <button onClick={()=>setPreviewWeight(w=>{const v=Math.max(10,(parseFloat(w)||0)-10);return String(v);})}
+                  style={{width:28,height:28,borderRadius:"50%",border:`1.5px solid ${T.borderMd}`,background:T.surface,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:T.text,flexShrink:0}}>−</button>
+                <input
+                  type="number" inputMode="numeric"
+                  value={previewWeight}
+                  onChange={e=>setPreviewWeight(e.target.value)}
+                  style={{width:64,textAlign:"center",border:`1.5px solid ${T.accent}`,borderRadius:8,padding:"5px 8px",fontSize:15,fontWeight:600,color:T.accent,background:T.surface,fontFamily:"Manrope"}}
+                />
+                <span style={{fontSize:13,color:T.muted,minWidth:14}}>г</span>
+                <button onClick={()=>setPreviewWeight(w=>String((parseFloat(w)||0)+10))}
+                  style={{width:28,height:28,borderRadius:"50%",border:`1.5px solid ${T.borderMd}`,background:T.surface,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:T.text,flexShrink:0}}>+</button>
+              </div>
+            </div>
+            <div style={{fontSize:11,color:T.faint,lineHeight:1.5}}>⚠️ ИИ определил вес примерно. Измени, если знаешь точнее.</div>
           </div>
-        ))}
-        {preview.result.health_score&&<HealthBar score={preview.result.health_score}/>}
-        {preview.result.recommendation&&<div style={{fontSize:12,lineHeight:1.6,margin:"10px 0",padding:"10px 12px",background:T.greenBg,border:`1px solid #b8d4c0`,borderRadius:10}}>
-          <span style={{fontWeight:600,color:T.green}}>🤖 Совет ИИ: </span>
-          <span style={{color:T.green}}>{preview.result.recommendation}</span>
-        </div>}
-        {preview.result.assumptions&&<div style={{fontSize:12,lineHeight:1.6,margin:"8px 0",padding:"10px 12px",background:T.blueBg,border:`1px solid #c0d4e8`,borderRadius:10}}>
-          <span style={{fontWeight:600,color:T.blue}}>💭 Допущения: </span>
-          <span style={{color:T.blue}}>{preview.result.assumptions}</span>
-        </div>}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:14}}>
-          <button onClick={addMeal} style={{background:T.accent,color:"#fff",border:"none",padding:"13px",borderRadius:50,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"Manrope"}}>+ В дневник</button>
-          <button className="ghost-btn" style={{width:"100%"}} onClick={()=>{setPreview(null);setTextMode(false);}}>Отмена</button>
-        </div>
-      </div>}
+
+          {/* Список блюд */}
+          {scaledDishes.map((d,i)=>(
+            <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${T.border}`,fontSize:13}}>
+              <span style={{color:T.muted}}>{d.name} <span style={{fontSize:11,color:T.faint}}>≈{d.weight}</span></span>
+              <span style={{fontWeight:600,color:T.text}}>{d.calories} ккал</span>
+            </div>
+          ))}
+
+          {preview.result.health_score&&<div style={{marginTop:10}}><HealthBar score={preview.result.health_score}/></div>}
+          {preview.result.recommendation&&<div style={{fontSize:12,lineHeight:1.6,margin:"10px 0",padding:"10px 12px",background:T.greenBg,border:`1px solid #b8d4c0`,borderRadius:10}}>
+            <span style={{fontWeight:600,color:T.green}}>🤖 Совет ИИ: </span>
+            <span style={{color:T.green}}>{preview.result.recommendation}</span>
+          </div>}
+          {preview.result.assumptions&&<div style={{fontSize:12,lineHeight:1.6,margin:"8px 0",padding:"10px 12px",background:T.blueBg,border:`1px solid #c0d4e8`,borderRadius:10}}>
+            <span style={{fontWeight:600,color:T.blue}}>💭 Допущения: </span>
+            <span style={{color:T.blue}}>{preview.result.assumptions}</span>
+          </div>}
+
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:14}}>
+            <button onClick={()=>{
+              if(!preview)return;
+              // Сохраняем с пересчитанными значениями
+              const saveResult={...preview.result,total:{calories:scaled.calories,protein:scaled.protein,fat:scaled.fat,carbs:scaled.carbs},dishes:scaledDishes};
+              setDay(d=>({...d,meals:[...(d.meals||[]),{...saveResult,img:preview.img,time:new Date().toLocaleTimeString("ru",{hour:"2-digit",minute:"2-digit"})}]}));
+              setPreview(null);setPreviewWeight("");
+            }} style={{background:T.accent,color:"#fff",border:"none",padding:"13px",borderRadius:50,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"Manrope"}}>+ В дневник</button>
+            <button className="ghost-btn" style={{width:"100%"}} onClick={()=>{setPreview(null);setPreviewWeight("");setTextMode(false);}}>Отмена</button>
+          </div>
+        </div>;
+      })()}
     </Card>
   </div>;
 }
