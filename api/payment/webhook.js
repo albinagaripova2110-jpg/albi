@@ -83,24 +83,21 @@ export default async function handler(req, res) {
     const status = data.payment_status || data.status || data.paymentStatus || ''
     if (status !== 'success') return res.status(200).json({ ok: true })
 
-    const rawOrderId = data.order_id || data.orderId || data.order_num || ''
+    // Ищем наш кастомный order ID (формат albi_TGID_PLAN_TIMESTAMP)
+    // Prodamus кладёт его в order_num, а в order_id — свой внутренний номер
+    const allOrderFields = [
+      data.order_num, data.order_id, data.orderId,
+      data.payment_orderid, data.merchant_order_id, data.custom_order_id,
+      data.description, data.comment, data.order_description,
+    ].filter(Boolean)
+
     let telegramId, plan, days
-
-    const parts = rawOrderId.split('_')
-    if (parts.length >= 4 && parts[0] === 'albi') {
-      telegramId = parseInt(parts[1]); plan = parts[2]; days = PLAN_DAYS[plan]
-    }
-
-    if (!telegramId || !days) {
-      const candidates = [
-        data.payment_orderid, data.merchant_order_id, data.custom_order_id,
-        data.description, data.comment, data.order_description,
-      ].filter(Boolean)
-      for (const c of candidates) {
-        const p = String(c).split('_')
-        if (p.length >= 4 && p[0] === 'albi') {
-          telegramId = parseInt(p[1]); plan = p[2]; days = PLAN_DAYS[plan]; break
-        }
+    for (const field of allOrderFields) {
+      const p = String(field).split('_')
+      if (p.length >= 4 && p[0] === 'albi') {
+        telegramId = parseInt(p[1]); plan = p[2]; days = PLAN_DAYS[plan]
+        console.log(`Order parsed from field "${field}": tg=${telegramId} plan=${plan}`)
+        break
       }
     }
 
