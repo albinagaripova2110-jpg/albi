@@ -1221,7 +1221,10 @@ const getTgId=()=>{
 
 async function syncLoad(tgId){
   try{
-    const r=await fetch(`/api/sync?telegram_id=${tgId}`);
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),5000); // 5 сек таймаут
+    const r=await fetch(`/api/sync?telegram_id=${tgId}`,{signal:controller.signal});
+    clearTimeout(timer);
     if(r.ok) return await r.json();
   }catch{}
   return null;
