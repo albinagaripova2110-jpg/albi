@@ -557,7 +557,7 @@ function Today({ profile, norms, day, setDay, selectedDate, onSelectDate, histor
             placeholder="Например: тарелка борща со сметаной и кусок чёрного хлеба"
             style={{width:"100%",background:T.surface,border:`1.5px solid ${T.border}`,borderRadius:10,padding:"11px 14px",fontSize:13,color:T.text,fontFamily:"Manrope",resize:"none",minHeight:80,boxSizing:"border-box"}}/>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}>
-            <button onClick={async()=>{if(!textInput.trim())return;setLoading(true);setErr(null);try{const res=await analyzeText(textInput);setPreview({result:res,img:null});setTextInput("");}catch(e){const m=e.message||"";setErr(e instanceof TypeError||m.includes("Load failed")||m.includes("Failed to fetch")?"Нет соединения с сервером. Проверь интернет.":m||"Ошибка, попробуй ещё раз");}finally{setLoading(false);}}}
+            <button onClick={async()=>{if(!textInput.trim())return;setLoading(true);setErr(null);try{const res=await analyzeText(textInput);const initW=parseTotalWeight(res.dishes);setPreview({result:res,img:null,baseWeight:initW||0,baseResult:JSON.parse(JSON.stringify(res))});setTextInput("");}catch(e){const m=e.message||"";setErr(e instanceof TypeError||m.includes("Load failed")||m.includes("Failed to fetch")?"Нет соединения с сервером. Проверь интернет.":m||"Ошибка, попробуй ещё раз");}finally{setLoading(false);}}}
               disabled={!textInput.trim()||loading}
               style={{background:loading?T.faint:T.blue,color:"#fff",border:"none",padding:"12px",borderRadius:50,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"Manrope"}}>
               {loading?<><span className="spin">○</span>Считаю…</>:"Посчитать →"}
@@ -631,7 +631,7 @@ function Today({ profile, norms, day, setDay, selectedDate, onSelectDate, histor
         const newW=parseFloat(previewWeight)||0;
         const baseW=preview.baseWeight||0;
         const ratio=baseW>0&&newW>0?newW/baseW:1;
-        const base=preview.baseResult;
+        const base=preview.baseResult||preview.result;
         const scaled={
           calories:Math.round(base.total.calories*ratio),
           protein:Math.round(base.total.protein*ratio),
