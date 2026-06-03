@@ -1208,7 +1208,124 @@ function Profile({ profile, norms, onSave, onReset, access, tgId, onGranted }) {
       <button onClick={()=>onSave({...f,age:+f.age,weight:+f.weight,height:+f.height})} style={{width:"100%",background:T.accent,color:"#fff",border:"none",padding:"14px",borderRadius:50,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"Manrope"}}>Сохранить</button>
     </Card>
     <button className="ghost-btn" style={{width:"100%",marginTop:4,color:"#c04040",borderColor:"#f5d0cc"}} onClick={onReset}>Сбросить всё</button>
+    <div style={{marginTop:16}}><FeedbackBlock tgId={tgId}/></div>
   </div>;
+}
+
+// ─── FeedbackBlock ─────────────────────────────────────────────────
+function FeedbackBlock({ tgId }) {
+  const [rating,setRating]=useState(0);
+  const [hovered,setHovered]=useState(0);
+  const [liked,setLiked]=useState([]);
+  const [issues,setIssues]=useState([]);
+  const [comment,setComment]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [sent,setSent]=useState(false);
+
+  const likedTags=["Удобно","Быстро","Точный подсчёт","Дизайн"];
+  const issueTags=["Неточный подсчёт","Неудобно выбирать порцию","Долго грузит","Другое"];
+
+  const toggle=(arr,setArr,tag)=>setArr(p=>p.includes(tag)?p.filter(t=>t!==tag):[...p,tag]);
+
+  const submit=async()=>{
+    if(!rating)return;
+    setLoading(true);
+    try{
+      await fetch("/api/feedback",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          telegram_id:tgId||null,
+          rating,
+          liked,
+          issues,
+          comment:comment.trim()||null,
+          created_at:new Date().toISOString(),
+        }),
+      });
+      setRating(0);setHovered(0);setLiked([]);setIssues([]);setComment("");
+      setSent(true);
+      setTimeout(()=>setSent(false),3000);
+    }catch{}
+    setLoading(false);
+  };
+
+  const starColor=(star)=>star<=(hovered||rating)?"#f5a623":T.border;
+
+  return <Card style={{marginBottom:0}}>
+    <SectionLabel>Обратная связь</SectionLabel>
+
+    {/* Звёзды */}
+    <div style={{display:"flex",gap:6,marginBottom:16,justifyContent:"center"}}>
+      {[1,2,3,4,5].map(star=>(
+        <button key={star}
+          onClick={()=>setRating(star)}
+          onMouseEnter={()=>setHovered(star)}
+          onMouseLeave={()=>setHovered(0)}
+          style={{background:"none",border:"none",cursor:"pointer",padding:"2px 3px",fontSize:34,lineHeight:1,
+            color:starColor(star),transition:"color .15s, transform .1s",
+            transform:star<=(hovered||rating)?"scale(1.18)":"scale(1)"}}>
+          ★
+        </button>
+      ))}
+    </div>
+
+    {/* Что понравилось */}
+    <div style={{marginBottom:14}}>
+      <div style={{fontSize:10,fontWeight:600,letterSpacing:".12em",color:T.muted,textTransform:"uppercase",marginBottom:8}}>Что понравилось</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+        {likedTags.map(tag=>(
+          <button key={tag} className={`btn-pill${liked.includes(tag)?" on":""}`}
+            onClick={()=>toggle(liked,setLiked,tag)}>
+            {tag}
+          </button>
+        ))}
+      </div>
+    </div>
+
+    {/* Что мешает */}
+    <div style={{marginBottom:14}}>
+      <div style={{fontSize:10,fontWeight:600,letterSpacing:".12em",color:T.muted,textTransform:"uppercase",marginBottom:8}}>Что мешает</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+        {issueTags.map(tag=>(
+          <button key={tag} className={`btn-pill${issues.includes(tag)?" on":""}`}
+            onClick={()=>toggle(issues,setIssues,tag)}>
+            {tag}
+          </button>
+        ))}
+      </div>
+    </div>
+
+    {/* Комментарий */}
+    <div style={{marginBottom:14}}>
+      <textarea
+        value={comment}
+        onChange={e=>setComment(e.target.value.slice(0,500))}
+        placeholder="Расскажи подробнее (необязательно)"
+        rows={3}
+        style={{width:"100%",background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:10,
+          padding:"11px 14px",fontSize:13,color:T.text,fontFamily:"Manrope",
+          resize:"none",boxSizing:"border-box",transition:"border .2s, box-shadow .2s"}}
+      />
+      <div style={{fontSize:10,color:T.faint,textAlign:"right",marginTop:2}}>{comment.length}/500</div>
+    </div>
+
+    {/* Кнопка */}
+    <button onClick={submit} disabled={!rating||loading}
+      style={{width:"100%",background:rating?T.accent:T.faint,color:"#fff",border:"none",
+        padding:"13px",borderRadius:50,fontSize:14,fontWeight:600,
+        cursor:rating&&!loading?"pointer":"not-allowed",fontFamily:"Manrope",
+        transition:"background .2s",opacity:loading?.7:1}}>
+      {loading?<><span className="spin">○</span>Отправляю…</>:"Отправить отзыв"}
+    </button>
+
+    {/* Тост */}
+    {sent&&<div className="up" style={{marginTop:12,padding:"10px 14px",
+        background:T.greenBg,border:`1px solid #b8d4c0`,borderRadius:10,
+        fontSize:13,color:T.green,fontWeight:600,textAlign:"center"}}>
+      Спасибо, отправлено! 🙏
+    </div>}
+  </Card>;
 }
 
 // ─── Sync ──────────────────────────────────────────────────────────
