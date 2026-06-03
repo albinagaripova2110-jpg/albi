@@ -7,9 +7,9 @@ import Admin from './Admin.jsx'
 const tg = window.Telegram?.WebApp
 if (tg) {
   tg.ready()
-  tg.expand() // Открыть на весь экран
-  tg.setHeaderColor('#f9f8f6')
-  tg.setBackgroundColor('#f9f8f6')
+  tg.expand()
+  try { tg.setHeaderColor('#f9f8f6') } catch {}
+  try { tg.setBackgroundColor('#f9f8f6') } catch {}
 }
 
 // Expose Telegram user name globally so App can use it
