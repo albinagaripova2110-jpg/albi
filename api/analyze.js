@@ -89,14 +89,11 @@ export default async function handler(req, res) {
 
   if (supabaseUrl && supabaseKey && telegramId) {
     await trackUser(supabaseUrl, supabaseKey, telegramId, telegramName, telegramUsername)
-
-    const access = await checkAccess(supabaseUrl, supabaseKey, telegramId)
-    if (!access.allowed) {
-      return res.status(403).json({
-        error: 'trial_expired',
-        message: 'Пробный период закончился. Оформи подписку для продолжения.',
-      })
-    }
+    // Проверка доступа временно отключена — приложение бесплатно для всех
+    // const access = await checkAccess(supabaseUrl, supabaseKey, telegramId)
+    // if (!access.allowed) {
+    //   return res.status(403).json({ error: 'trial_expired', message: '...' })
+    // }
   }
 
   try {

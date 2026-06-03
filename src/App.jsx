@@ -1048,8 +1048,8 @@ function Profile({ profile, norms, onSave, onReset, access, tgId, onGranted }) {
   return <div>
     <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,fontWeight:300,color:T.text,marginBottom:24}}>Профиль</div>
 
-    {/* Subscription card */}
-    <Card style={{marginBottom:0}}>
+    {/* Subscription card — временно скрыт */}
+    {false && <Card style={{marginBottom:0}}>
       <SectionLabel>Подписка</SectionLabel>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
         <div>
@@ -1159,7 +1159,7 @@ function Profile({ profile, norms, onSave, onReset, access, tgId, onGranted }) {
           </button>
         </div>
       </>}
-    </Card>
+    </Card>}
 
     <Card style={{background:`linear-gradient(135deg,${T.accentBg},${T.surface})`,border:`1px solid ${T.border}`}}>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:0}}>
@@ -1518,8 +1518,8 @@ export default function App() {
 
   if(!profile) return <Onboarding onDone={p=>setProfile(p)}/>;
 
-  // Показываем paywall только если точно знаем что доступ закончился
-  if(access&&!access.allowed) return <Paywall tgId={tgId} onGranted={refreshAccess}/>;
+  // Paywall временно отключён — приложение бесплатно для всех
+  // if(access&&!access.allowed) return <Paywall tgId={tgId} onGranted={refreshAccess}/>;
 
   return <div style={{minHeight:"100vh",background:T.bg,fontFamily:"'Manrope',sans-serif",paddingBottom:90,overflowX:"hidden",width:"100%"}}>
     <style>{CSS}</style>
