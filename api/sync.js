@@ -1,3 +1,11 @@
+async function sendTelegram(botToken, chatId, text) {
+  await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
+  }).catch(() => {})
+}
+
 async function supabaseRequest(url, options, supabaseKey) {
   const res = await fetch(url, {
     ...options,
@@ -73,6 +81,43 @@ export default async function handler(req, res) {
 
   // POST — сохранить данные
   if (req.method === 'POST') {
+    // Если есть rating — это отзыв, не синк
+    if (req.body.rating !== undefined) {
+      const { telegram_id, rating, liked, issues, comment, created_at } = req.body
+      if (!rating) return res.status(400).json({ error: 'rating required' })
+
+      await supabaseRequest(
+        `${supabaseUrl}/rest/v1/feedback`,
+        {
+          method: 'POST',
+          headers: { 'Prefer': 'return=minimal' },
+          body: JSON.stringify({
+            telegram_id: telegram_id || null,
+            rating,
+            liked:   Array.isArray(liked)  ? liked  : [],
+            issues:  Array.isArray(issues) ? issues : [],
+            comment: comment || null,
+            created_at: created_at || new Date().toISOString(),
+          }),
+        },
+        supabaseKey
+      )
+
+      const botToken    = process.env.TELEGRAM_BOT_TOKEN
+      const adminChatId = process.env.ADMIN_CHAT_ID
+      if (botToken && adminChatId) {
+        const stars = '⭐'.repeat(rating) + '☆'.repeat(5 - rating)
+        let msg = `<b>Новый отзыв ${stars}</b>\n`
+        if (telegram_id) msg += `👤 tg_id: <code>${telegram_id}</code>\n`
+        if (liked  && liked.length  > 0) msg += `\n✅ <b>Понравилось:</b> ${liked.join(', ')}`
+        if (issues && issues.length > 0) msg += `\n⚠️ <b>Мешает:</b> ${issues.join(', ')}`
+        if (comment) msg += `\n\n💬 <i>${comment}</i>`
+        await sendTelegram(botToken, adminChatId, msg)
+      }
+
+      return res.status(200).json({ ok: true })
+    }
+
     const { telegram_id, tg_name, tg_username, profile, history, weights, reminders } = req.body
     if (!telegram_id) return res.status(400).json({ error: 'telegram_id required' })
 
