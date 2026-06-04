@@ -83,7 +83,10 @@ export default async function handler(req, res) {
   const supabaseUrl = process.env.SUPABASE_URL
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY
 
-  const telegramId = req.headers['x-telegram-user-id'] ? parseInt(req.headers['x-telegram-user-id']) : null
+  // tg_id из тела (новый способ без кастомных заголовков) или из заголовков (обратная совместимость)
+  const telegramId = req.body?.tg_id
+    ? parseInt(req.body.tg_id)
+    : req.headers['x-telegram-user-id'] ? parseInt(req.headers['x-telegram-user-id']) : null
   const telegramName = req.headers['x-telegram-user-name'] || null
   const telegramUsername = req.headers['x-telegram-username'] || null
 

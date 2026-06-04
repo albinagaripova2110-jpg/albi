@@ -90,9 +90,10 @@ async function analyzeFood(base64, mediaType, portionHint, cookMethod, manualCal
   const cookNote = cookMethod ? `Способ приготовления: ${cookMethod}. Учти масло/жир если жарка.` : "";
   const manualNote = manualCals ? `Пользователь знает точную калорийность: ${manualCals} ккал — используй именно это число для total.calories, только разбей по БЖУ пропорционально.` : "";
   const portionNote = portionHint ? `Ориентировочный размер порции: ${portionHint}.` : "Самостоятельно оцени вес блюда по визуальным признакам: размеру тарелки, объёму, типу блюда. Укажи реалистичный вес в поле weight для каждого блюда.";
+  const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
   const res = await fetch("/api/analyze", {
-    method:"POST", headers:getTgHeaders(),
-    body:JSON.stringify({ model:"gpt-4o-mini", max_tokens:1000,
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({ model:"gpt-4o-mini", max_tokens:1000, tg_id:tgUser?.id||null,
       messages:[{role:"user",content:[
         {type:"image",source:{type:"base64",media_type:mediaType,data:base64}},
         {type:"text",text:`Ты опытный диетолог-нутрициолог. Оцени еду на фото максимально точно.\n${portionNote}\n${cookNote}\n${manualNote}${DIET_PROMPT_SUFFIX}`}
@@ -103,9 +104,10 @@ async function analyzeFood(base64, mediaType, portionHint, cookMethod, manualCal
 }
 
 async function analyzeText(description) {
+  const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
   const res = await fetch("/api/analyze", {
-    method:"POST", headers:getTgHeaders(),
-    body:JSON.stringify({ text_only:true, model:"gpt-4o-mini", max_tokens:1000,
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({ text_only:true, model:"gpt-4o-mini", max_tokens:1000, tg_id:tgUser?.id||null,
       messages:[{role:"user",content:[
         {type:"text",text:`Ты опытный диетолог-нутрициолог. Оцени блюдо по описанию максимально точно.\nОписание: ${description}${DIET_PROMPT_SUFFIX}`}
       ]}]
