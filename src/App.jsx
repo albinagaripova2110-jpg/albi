@@ -324,10 +324,12 @@ function BarcodeScanner({ onFound, onClose }) {
   const detectorRef = useRef(null);
   const scanRef = useRef(null);
 
-  const [phase, setPhase] = useState("init"); // init|scanning|lookup|found|manual
+  const photoInputRef = useRef(null);
+  const [phase, setPhase] = useState("init"); // init|scanning|lookup|found|photo|manual
   const [err, setErr] = useState(null);
   const [manualCode, setManualCode] = useState("");
   const [lookingUp, setLookingUp] = useState(false);
+  const [loadingLib, setLoadingLib] = useState(false);
   const [product, setProduct] = useState(null);
   const [grams, setGrams] = useState("100");
 
@@ -368,12 +370,52 @@ function BarcodeScanner({ onFound, onClose }) {
     setLookingUp(false);
   }, [stopCamera]);
 
+  // Decode barcode from a photo file (iOS fallback via ZXing CDN, or BarcodeDetector for Android)
+  const decodePhoto = useCallback(async (file) => {
+    setLoadingLib(true); setErr(null);
+    try {
+      const dataUrl = await new Promise(res => {
+        const fr = new FileReader(); fr.onload = e => res(e.target.result); fr.readAsDataURL(file);
+      });
+      let code = null;
+      if (detectorRef.current) {
+        // Android: use native BarcodeDetector on image
+        const img = document.createElement("img");
+        img.src = dataUrl;
+        await new Promise(r => { img.onload = r; });
+        const results = await detectorRef.current.detect(img);
+        if (results.length > 0) code = results[0].rawValue;
+      } else {
+        // iOS: load ZXing from CDN (loaded once, cached in window)
+        if (!window.ZXingLibrary) {
+          await new Promise((res, rej) => {
+            const s = document.createElement("script");
+            s.src = "https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/dist/umd/index.min.js";
+            s.onload = res; s.onerror = () => rej(new Error("load_err"));
+            document.head.appendChild(s);
+          });
+        }
+        const reader = new window.ZXingLibrary.BrowserMultiFormatReader();
+        const result = await reader.decodeFromImageUrl(dataUrl);
+        code = result.text;
+      }
+      if (code) { window.Telegram?.WebApp?.HapticFeedback?.impactOccurred("medium"); lookup(code); }
+      else setErr("Штрихкод не найден на фото. Попробуй снова или введи вручную.");
+    } catch (e) {
+      const notFound = e?.name === "NotFoundException" || String(e?.message).includes("No MultiFormat") || e?.message === "load_err";
+      setErr(notFound
+        ? "Штрихкод не распознан. Убедись что он чётко виден и не смазан."
+        : "Ошибка. Попробуй ввести код вручную.");
+    }
+    setLoadingLib(false);
+  }, [lookup]);
+
   // Init: check BarcodeDetector support + start camera
   useEffect(() => {
-    if (!("BarcodeDetector" in window)) { setPhase("manual"); return; }
+    if (!("BarcodeDetector" in window)) { setPhase("photo"); return; }
     try {
       detectorRef.current = new BarcodeDetector({ formats: ["ean_13","ean_8","upc_a","upc_e","code_128","code_39"] });
-    } catch { setPhase("manual"); return; }
+    } catch { setPhase("photo"); return; }
 
     let active = true;
     navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } })
@@ -382,7 +424,7 @@ function BarcodeScanner({ onFound, onClose }) {
         streamRef.current = s;
         setPhase("scanning");
       })
-      .catch(() => { if (active) { setErr("Нет доступа к камере. Проверь настройки разрешений."); setPhase("manual"); } });
+      .catch(() => { if (active) { setPhase("photo"); setErr("Нет доступа к камере. Сфотографируй штрихкод или введи вручную."); } });
 
     return () => { active = false; stopCamera(); };
   }, [stopCamera]);
@@ -412,10 +454,10 @@ function BarcodeScanner({ onFound, onClose }) {
     if (streamRef.current) {
       setPhase("scanning");
     } else {
-      if (!("BarcodeDetector" in window)) { setPhase("manual"); return; }
+      if (!("BarcodeDetector" in window)) { setPhase("photo"); return; }
       navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } })
         .then(s => { streamRef.current = s; setPhase("scanning"); })
-        .catch(() => { setErr("Нет доступа к камере"); setPhase("manual"); });
+        .catch(() => { setPhase("photo"); });
     }
   };
 
@@ -457,6 +499,25 @@ function BarcodeScanner({ onFound, onClose }) {
         style={{ background: T.bg, border: `1.5px solid ${T.border}`, borderRadius: 50, padding: "11px", cursor: "pointer", fontFamily: "Manrope", fontSize: 13, fontWeight: 500, color: T.text }}>
         ⌨️ Ввести код
       </button>
+      <button className="ghost-btn" style={{ width: "100%" }} onClick={() => { stopCamera(); onClose(); }}>Отмена</button>
+    </div>
+  </div>;
+
+  // Photo mode (iOS / camera permission denied)
+  if (phase === "photo") return <div className="up">
+    <div style={{ background: T.bg, border: `1.5px solid ${T.borderMd}`, borderRadius: 14, padding: 16 }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: T.text, marginBottom: 6 }}>📦 Штрихкод</div>
+      <div style={{ fontSize: 12, color: T.muted, marginBottom: 14, lineHeight: 1.5 }}>
+        Сфотографируй штрихкод на упаковке — приложение его распознает
+      </div>
+      {err && <div style={{ marginBottom: 12, padding: "10px 12px", background: "#fdf2f2", border: "1px solid #f5d0cc", borderRadius: 10, color: "#c04040", fontSize: 12, lineHeight: 1.5 }}>{err}</div>}
+      <input ref={photoInputRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }}
+        onChange={e => { if (e.target.files?.[0]) decodePhoto(e.target.files[0]); e.target.value = ""; }} />
+      <button onClick={() => photoInputRef.current?.click()} disabled={loadingLib}
+        style={{ width: "100%", background: loadingLib ? T.faint : T.accent, color: "#fff", border: "none", padding: "13px", borderRadius: 50, fontSize: 14, fontWeight: 600, cursor: loadingLib ? "not-allowed" : "pointer", fontFamily: "Manrope", marginBottom: 8, transition: "background .2s" }}>
+        {loadingLib ? <><span className="spin">○</span>Распознаю…</> : "📷 Сфотографировать штрихкод"}
+      </button>
+      <button className="ghost-btn" style={{ width: "100%", marginBottom: 8 }} onClick={() => { setErr(null); setPhase("manual"); }}>⌨️ Ввести код вручную</button>
       <button className="ghost-btn" style={{ width: "100%" }} onClick={() => { stopCamera(); onClose(); }}>Отмена</button>
     </div>
   </div>;
