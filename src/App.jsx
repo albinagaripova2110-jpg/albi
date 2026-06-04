@@ -33,6 +33,7 @@ input:focus,select:focus{outline:none;border-color:${T.accent}!important;box-sha
 .up{animation:fadeUp .4s cubic-bezier(.16,1,.3,1) forwards}
 @keyframes spin{to{transform:rotate(360deg)}}
 .spin{animation:spin .9s linear infinite;display:inline-block;margin-right:6px}
+@keyframes scanLine{0%,100%{top:0}50%{top:calc(100% - 2px)}}
 .tab{flex:1;background:none;border:none;color:${T.faint};padding:12px 0 10px;cursor:pointer;font-size:10px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;transition:color .2s;display:flex;flex-direction:column;align-items:center;gap:4px;font-family:'Manrope',sans-serif}
 .tab.on{color:${T.accent}}
 .tab .ico{line-height:1;display:flex;align-items:center;justify-content:center}
@@ -316,6 +317,220 @@ function Onboarding({ onDone }) {
   </div>;
 }
 
+// ─── BarcodeScanner ──────────────────────────────────────────────
+function BarcodeScanner({ onFound, onClose }) {
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const detectorRef = useRef(null);
+  const scanRef = useRef(null);
+
+  const [phase, setPhase] = useState("init"); // init|scanning|lookup|found|manual
+  const [err, setErr] = useState(null);
+  const [manualCode, setManualCode] = useState("");
+  const [lookingUp, setLookingUp] = useState(false);
+  const [product, setProduct] = useState(null);
+  const [grams, setGrams] = useState("100");
+
+  const stopScan = useCallback(() => {
+    if (scanRef.current) { clearInterval(scanRef.current); scanRef.current = null; }
+  }, []);
+
+  const stopCamera = useCallback(() => {
+    stopScan();
+    if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+  }, [stopScan]);
+
+  const lookup = useCallback(async (code) => {
+    setLookingUp(true); setErr(null);
+    try {
+      const r = await fetch(`https://world.openfoodfacts.org/api/v0/product/${code}.json`);
+      const d = await r.json();
+      if (d.status === 1 && d.product) {
+        const p = d.product;
+        const n = p.nutriments || {};
+        const cal100 = Math.round(n["energy-kcal_100g"] || n["energy-kcal"] || 0);
+        const prot100 = Math.round((n["proteins_100g"] || 0) * 10) / 10;
+        const fat100 = Math.round((n["fat_100g"] || 0) * 10) / 10;
+        const carbs100 = Math.round((n["carbohydrates_100g"] || 0) * 10) / 10;
+        const name = p.product_name_ru || p.product_name || "Продукт";
+        setProduct({ name, cal100, prot100, fat100, carbs100, code });
+        setGrams("100");
+        setPhase("found");
+        stopCamera();
+      } else {
+        setErr(`Штрихкод ${code} не найден в базе.\nПопробуй отсканировать снова или добавь вручную.`);
+        setPhase("manual");
+      }
+    } catch {
+      setErr("Нет соединения. Проверь интернет и попробуй ещё раз.");
+      setPhase("manual");
+    }
+    setLookingUp(false);
+  }, [stopCamera]);
+
+  // Init: check BarcodeDetector support + start camera
+  useEffect(() => {
+    if (!("BarcodeDetector" in window)) { setPhase("manual"); return; }
+    try {
+      detectorRef.current = new BarcodeDetector({ formats: ["ean_13","ean_8","upc_a","upc_e","code_128","code_39"] });
+    } catch { setPhase("manual"); return; }
+
+    let active = true;
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } })
+      .then(s => {
+        if (!active) { s.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = s;
+        setPhase("scanning");
+      })
+      .catch(() => { if (active) { setErr("Нет доступа к камере. Проверь настройки разрешений."); setPhase("manual"); } });
+
+    return () => { active = false; stopCamera(); };
+  }, [stopCamera]);
+
+  // Attach stream to video and start scan loop when phase = scanning
+  useEffect(() => {
+    if (phase !== "scanning" || !streamRef.current || !videoRef.current) return;
+    videoRef.current.srcObject = streamRef.current;
+    videoRef.current.play().catch(() => {});
+    stopScan();
+    scanRef.current = setInterval(async () => {
+      if (!videoRef.current || videoRef.current.readyState < 2) return;
+      try {
+        const codes = await detectorRef.current.detect(videoRef.current);
+        if (codes.length > 0) {
+          stopScan();
+          setPhase("lookup");
+          window.Telegram?.WebApp?.HapticFeedback?.impactOccurred("medium");
+          lookup(codes[0].rawValue);
+        }
+      } catch {}
+    }, 300);
+  }, [phase, lookup, stopScan]);
+
+  const scanAgain = () => {
+    setProduct(null); setErr(null); setManualCode("");
+    if (streamRef.current) {
+      setPhase("scanning");
+    } else {
+      if (!("BarcodeDetector" in window)) { setPhase("manual"); return; }
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } })
+        .then(s => { streamRef.current = s; setPhase("scanning"); })
+        .catch(() => { setErr("Нет доступа к камере"); setPhase("manual"); });
+    }
+  };
+
+  const g = parseFloat(grams) || 100;
+  const ratio = g / 100;
+  const cal = product ? Math.round(product.cal100 * ratio) : 0;
+  const prot = product ? Math.round(product.prot100 * ratio * 10) / 10 : 0;
+  const fat = product ? Math.round(product.fat100 * ratio * 10) / 10 : 0;
+  const carbs = product ? Math.round(product.carbs100 * ratio * 10) / 10 : 0;
+
+  const addToDiary = () => {
+    if (!product) return;
+    onFound({
+      dishes: [{ name: product.name, weight: `${g}г`, calories: cal, protein: prot, fat, carbs }],
+      total: { calories: cal, protein: prot, fat, carbs },
+      img: null,
+      time: new Date().toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" })
+    });
+  };
+
+  // Camera scanning view
+  if (phase === "scanning" || phase === "lookup") return <div className="up">
+    <div style={{ position: "relative", borderRadius: 14, overflow: "hidden", background: "#000", marginBottom: 12, maxHeight: 280, aspectRatio: "4/3" }}>
+      <video ref={videoRef} muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+      <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.4)" }} />
+      {/* Viewfinder */}
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ position: "relative", width: "72%", height: 70, border: `2px solid ${T.accent}`, borderRadius: 8, overflow: "hidden", boxShadow: `0 0 0 9999px rgba(0,0,0,.38)` }}>
+          <div style={{ position: "absolute", left: 0, right: 0, height: 2, background: T.accent, animation: "scanLine 1.8s ease-in-out infinite", opacity: .9 }} />
+        </div>
+      </div>
+      {phase === "lookup" && <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2 }}>
+        <div style={{ color: "#fff", fontSize: 13, fontWeight: 600 }}><span className="spin">○</span>Ищу продукт…</div>
+      </div>}
+    </div>
+    <div style={{ textAlign: "center", fontSize: 12, color: T.muted, marginBottom: 12 }}>Наведи камеру на штрихкод продукта</div>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+      <button onClick={() => { stopCamera(); setPhase("manual"); }}
+        style={{ background: T.bg, border: `1.5px solid ${T.border}`, borderRadius: 50, padding: "11px", cursor: "pointer", fontFamily: "Manrope", fontSize: 13, fontWeight: 500, color: T.text }}>
+        ⌨️ Ввести код
+      </button>
+      <button className="ghost-btn" style={{ width: "100%" }} onClick={() => { stopCamera(); onClose(); }}>Отмена</button>
+    </div>
+  </div>;
+
+  // Manual barcode input
+  if (phase === "manual" || phase === "init") return <div className="up">
+    <div style={{ background: T.bg, border: `1.5px solid ${T.borderMd}`, borderRadius: 14, padding: 16 }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: T.text, marginBottom: 12 }}>🔍 Поиск по штрихкоду</div>
+      {err && <div style={{ marginBottom: 12, padding: "10px 12px", background: "#fdf2f2", border: "1px solid #f5d0cc", borderRadius: 10, color: "#c04040", fontSize: 12, lineHeight: 1.5, whiteSpace: "pre-line" }}>{err}</div>}
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <input type="tel" inputMode="numeric" pattern="[0-9]*"
+          placeholder="Штрихкод (напр. 4607141743421)"
+          value={manualCode}
+          onChange={e => setManualCode(e.target.value.replace(/\D/g, ""))}
+          onKeyDown={e => e.key === "Enter" && manualCode.length >= 8 && lookup(manualCode)}
+          style={{ flex: 1, background: T.surface, border: `1.5px solid ${T.border}`, borderRadius: 10, padding: "11px 14px", color: T.text, fontSize: 14 }}
+        />
+        <button onClick={() => manualCode.length >= 8 && !lookingUp && lookup(manualCode)}
+          disabled={manualCode.length < 8 || lookingUp}
+          style={{ background: manualCode.length >= 8 ? T.accent : T.faint, color: "#fff", border: "none", borderRadius: 10, padding: "11px 18px", fontFamily: "Manrope", fontSize: 14, fontWeight: 600, cursor: manualCode.length >= 8 ? "pointer" : "not-allowed", flexShrink: 0 }}>
+          {lookingUp ? <span className="spin">○</span> : "→"}
+        </button>
+      </div>
+      <button className="ghost-btn" style={{ width: "100%" }} onClick={() => { stopCamera(); onClose(); }}>Отмена</button>
+    </div>
+  </div>;
+
+  // Product found
+  if (phase === "found" && product) return <div className="up">
+    <div style={{ background: T.accentBg, border: `1.5px solid ${T.accent}`, borderRadius: 14, padding: "12px 14px", marginBottom: 12 }}>
+      <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".12em", color: T.accent, textTransform: "uppercase", marginBottom: 4 }}>📦 Найдено</div>
+      <div style={{ fontSize: 15, fontWeight: 600, color: T.text, marginBottom: 2, lineHeight: 1.3 }}>{product.name}</div>
+      <div style={{ fontSize: 11, color: T.muted }}>Штрихкод: {product.code}</div>
+    </div>
+
+    <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 14, padding: "12px 14px", marginBottom: 12 }}>
+      <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 48, fontWeight: 300, color: T.accent, lineHeight: 1, marginBottom: 4 }}>{cal}</div>
+      <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".12em", color: T.muted, marginBottom: 8 }}>ККАЛ</div>
+      <div style={{ display: "flex", gap: 16 }}>
+        {[["Белки", prot], ["Жиры", fat], ["Углеводы", carbs]].map(([l, v]) => (
+          <div key={l} style={{ fontSize: 12, color: T.muted }}>{l} <b style={{ color: T.text, fontSize: 13 }}>{v}г</b></div>
+        ))}
+      </div>
+      {product.cal100 > 0 && <div style={{ fontSize: 10, color: T.faint, marginTop: 8 }}>На 100г: {product.cal100} ккал · Б{product.prot100} Ж{product.fat100} У{product.carbs100}</div>}
+    </div>
+
+    <div style={{ background: T.bg, borderRadius: 12, padding: "10px 14px", marginBottom: 14, border: `1px solid ${T.border}` }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>Размер порции</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button onClick={() => setGrams(w => String(Math.max(5, (parseFloat(w) || 100) - 10)))}
+            style={{ width: 28, height: 28, borderRadius: "50%", border: `1.5px solid ${T.borderMd}`, background: T.surface, fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: T.text, flexShrink: 0 }}>−</button>
+          <input type="number" inputMode="numeric" value={grams} onChange={e => setGrams(e.target.value)}
+            style={{ width: 64, textAlign: "center", border: `1.5px solid ${T.accent}`, borderRadius: 8, padding: "5px 8px", fontSize: 15, fontWeight: 600, color: T.accent, background: T.surface, fontFamily: "Manrope" }} />
+          <span style={{ fontSize: 13, color: T.muted, minWidth: 14 }}>г</span>
+          <button onClick={() => setGrams(w => String((parseFloat(w) || 100) + 10))}
+            style={{ width: 28, height: 28, borderRadius: "50%", border: `1.5px solid ${T.borderMd}`, background: T.surface, fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: T.text, flexShrink: 0 }}>+</button>
+        </div>
+      </div>
+    </div>
+
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+      <button onClick={addToDiary}
+        style={{ background: T.accent, color: "#fff", border: "none", padding: "13px", borderRadius: 50, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "Manrope" }}>
+        + В дневник
+      </button>
+      <button className="ghost-btn" style={{ width: "100%" }} onClick={scanAgain}>↩ Снова</button>
+    </div>
+    <button className="ghost-btn" style={{ width: "100%" }} onClick={() => { stopCamera(); onClose(); }}>Отмена</button>
+  </div>;
+
+  return null;
+}
+
 // ─── Today ────────────────────────────────────────────────────────
 function Today({ profile, norms, day, setDay, selectedDate, onSelectDate, history }) {
   const [img,setImg]=useState(null);
@@ -324,6 +539,7 @@ function Today({ profile, norms, day, setDay, selectedDate, onSelectDate, histor
   const [cookMethod,setCookMethod]=useState(null);
   const [manualMode,setManualMode]=useState(false);
   const [textMode,setTextMode]=useState(false);
+  const [barcodeMode,setBarcodeMode]=useState(false);
   const [textInput,setTextInput]=useState("");
   const [manualCals,setManualCals]=useState("");
   const [loading,setLoading]=useState(false);
@@ -487,7 +703,9 @@ function Today({ profile, norms, day, setDay, selectedDate, onSelectDate, histor
       <SectionLabel>Приёмы пищи</SectionLabel>
       {meals.map((m,i)=>(
         <div key={i} className="row-item">
-          <img src={m.img} alt="" style={{width:44,height:44,borderRadius:10,objectFit:"cover",flexShrink:0}}/>
+          {m.img
+            ?<img src={m.img} alt="" style={{width:44,height:44,borderRadius:10,objectFit:"cover",flexShrink:0}}/>
+            :<div style={{width:44,height:44,borderRadius:10,background:T.accentBg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>🍽</div>}
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:13,fontWeight:500,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{m.dishes.map(d=>d.name).join(", ")}</div>
             <div style={{fontSize:11,color:T.muted,marginTop:2}}>{m.time} · Б{m.total.protein} Ж{m.total.fat} У{m.total.carbs}</div>
@@ -527,30 +745,44 @@ function Today({ profile, norms, day, setDay, selectedDate, onSelectDate, histor
     {/* Add food */}
     <Card>
       <SectionLabel>Добавить еду</SectionLabel>
-      {!img&&!preview&&!manualMode&&!textMode&&<div>
+      {!img&&!preview&&!manualMode&&!textMode&&!barcodeMode&&<div>
         <div className="zone" onClick={()=>fileRef.current.click()}>
           <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>processFile(e.target.files[0])}/>
           <div style={{fontSize:32,marginBottom:10}}>📸</div>
           <div style={{fontSize:14,color:T.muted,fontWeight:500}}>Фото или галерея</div>
           <div style={{fontSize:11,color:T.faint,marginTop:4}}>Нажми чтобы выбрать</div>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}>
-          <button onClick={()=>setTextMode(true)} style={{background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:14,padding:"12px 10px",cursor:"pointer",fontFamily:"Manrope",display:"flex",alignItems:"center",gap:8,transition:"border-color .2s"}}>
-            <span style={{fontSize:20}}>💬</span>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginTop:10}}>
+          <button onClick={()=>setTextMode(true)} style={{background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:14,padding:"10px 8px",cursor:"pointer",fontFamily:"Manrope",display:"flex",alignItems:"center",gap:6,transition:"border-color .2s"}}>
+            <span style={{fontSize:18}}>💬</span>
             <div style={{textAlign:"left"}}>
-              <div style={{fontSize:12,fontWeight:500,color:T.text}}>Описать текстом</div>
-              <div style={{fontSize:10,color:T.muted}}>ИИ посчитает сам</div>
+              <div style={{fontSize:11,fontWeight:500,color:T.text}}>По тексту</div>
+              <div style={{fontSize:10,color:T.muted}}>ИИ считает</div>
             </div>
           </button>
-          <button onClick={()=>setManualMode(true)} style={{background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:14,padding:"12px 10px",cursor:"pointer",fontFamily:"Manrope",display:"flex",alignItems:"center",gap:8,transition:"border-color .2s"}}>
-            <span style={{fontSize:20}}>✏️</span>
+          <button onClick={()=>setManualMode(true)} style={{background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:14,padding:"10px 8px",cursor:"pointer",fontFamily:"Manrope",display:"flex",alignItems:"center",gap:6,transition:"border-color .2s"}}>
+            <span style={{fontSize:18}}>✏️</span>
             <div style={{textAlign:"left"}}>
-              <div style={{fontSize:12,fontWeight:500,color:T.text}}>Ввести вручную</div>
-              <div style={{fontSize:10,color:T.muted}}>Знаешь калории?</div>
+              <div style={{fontSize:11,fontWeight:500,color:T.text}}>Вручную</div>
+              <div style={{fontSize:10,color:T.muted}}>Знаешь КБЖУ?</div>
+            </div>
+          </button>
+          <button onClick={()=>setBarcodeMode(true)} style={{background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:14,padding:"10px 8px",cursor:"pointer",fontFamily:"Manrope",display:"flex",alignItems:"center",gap:6,transition:"border-color .2s"}}>
+            <span style={{fontSize:18}}>📦</span>
+            <div style={{textAlign:"left"}}>
+              <div style={{fontSize:11,fontWeight:500,color:T.text}}>Штрихкод</div>
+              <div style={{fontSize:10,color:T.muted}}>Из базы</div>
             </div>
           </button>
         </div>
       </div>}
+      {barcodeMode&&<BarcodeScanner
+        onFound={meal=>{
+          setDay(d=>({...d,meals:[...(d.meals||[]),meal]}));
+          setBarcodeMode(false);
+        }}
+        onClose={()=>setBarcodeMode(false)}
+      />}
       {/* Text mode */}
       {textMode&&!preview&&<div className="up">
         <div style={{background:T.blueBg,border:`1.5px solid ${T.blue}`,borderRadius:14,padding:16}}>
